@@ -4,7 +4,6 @@ import json
 import time
 from pathlib import Path
 
-# Адрес ядра (в Docker-сети)
 CORE_URL = os.getenv("CORE_URL", "http://core:8000")
 
 def test_single_image(image_path):
@@ -26,25 +25,41 @@ def test_single_image(image_path):
         return None
 
 def batch_test_folder(input_folder, output_json=None):
-    """Тестируем все изображения в папке"""
-    results = {}
-    image_files = list(Path(input_folder).glob("*.jpg")) + list(Path(input_folder).glob("*.png"))
+    """
+    Обрабатывает все изображения в папке через эндпоинт /detect/folder (POST с query-параметрами).
+    Результаты (изображения с рамками) сохраняются в /app/results внутри core,
+    что соответствует локальной папке results.
+    """
+    print(f"Пакетная обработка папки {input_folder}...")
     
-    for i, img_path in enumerate(image_files):
-        print(f"[{i+1}/{len(image_files)}] {img_path.name}")
-        detections = test_single_image(str(img_path))
-        results[img_path.name] = detections
-        time.sleep(0.1)  # небольшая задержка
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    output_subdir = f"batch_{timestamp}"
     
-    if output_json:
-        with open(output_json, 'w') as f:
-            json.dump(results, f, indent=2)
-        print(f"Результаты сохранены в {output_json}")
+    params = {
+        "input_folder": input_folder,
+        "output_folder": f"/app/results/{output_subdir}",
+        "conf_thres": 0.25
+    }
     
-    return results
-
+    response = requests.post(f"{CORE_URL}/detect/folder", params=params)
+    
+    if response.status_code == 200:
+        report = response.json()
+        print(f"Обработано изображений: {report.get('total_images', 0)}")
+        
+        if output_json:
+            with open(output_json, 'w', encoding='utf-8') as f:
+                json.dump(report, f, indent=2, ensure_ascii=False)
+            print(f"Отчёт сохранён в {output_json}")
+        
+        print(f"Результаты (изображения) сохранены в локальной папке results/{output_subdir}")
+        return report
+    else:
+        print(f"Ошибка при вызове /detect/folder: {response.status_code}")
+        print(response.text)
+        return None
+    
 if __name__ == "__main__":
-    # Проверяем доступность ядра
     try:
         response = requests.get(f"{CORE_URL}/health")
         print("Ядро доступно!")
@@ -53,8 +68,5 @@ if __name__ == "__main__":
         print("Не удалось подключиться к ядру")
         exit(1)
     
-    # Тестируем одно изображение
-    test_single_image("/data/berzerk/example.jpg")
+    batch_test_folder("/data/berzerk", "/results/result.json")
     
-    # Или всю папку
-    # batch_test_folder("/data/berzerk", "/results/batch_results.json")

@@ -8,10 +8,8 @@ from yolo_core import YOLO26Detector
 
 app = FastAPI(title="YOLO26 CV Core", description="Ядро компьютерного зрения на YOLO26")
 
-# Инициализируем детектор
 detector = YOLO26Detector(model_path="yolo26x.pt")
 
-# Создаём временную папку для загружаемых файлов
 TEMP_DIR = "/tmp/yolo_uploads"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
@@ -38,7 +36,7 @@ async def detect_file(file: UploadFile = File(...), conf_thres: float = 0.25):
     """
     Загрузить одно изображение и получить детекции
     """
-    # Сохраняем загруженный файл
+
     file_ext = Path(file.filename).suffix
     file_id = str(uuid.uuid4())
     temp_path = os.path.join(TEMP_DIR, f"{file_id}{file_ext}")
@@ -46,13 +44,10 @@ async def detect_file(file: UploadFile = File(...), conf_thres: float = 0.25):
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    # Создаём временную выходную папку
     output_dir = os.path.join(TEMP_DIR, f"out_{file_id}")
     
-    # Запускаем детекцию
     results = detector.detect_single(temp_path, output_dir)
     
-    # Формируем ответ
     response = []
     for result in results:
         for box in result.boxes:
@@ -63,7 +58,6 @@ async def detect_file(file: UploadFile = File(...), conf_thres: float = 0.25):
                 "bbox": box.xyxy[0].tolist() if hasattr(box, 'xyxy') else []
             })
     
-    # Очищаем временные файлы
     os.remove(temp_path)
     shutil.rmtree(output_dir, ignore_errors=True)
     
@@ -78,7 +72,7 @@ async def detect_folder(input_folder: str, output_folder: str = "results", conf_
     if not os.path.exists(input_folder):
         raise HTTPException(status_code=404, detail=f"Папка {input_folder} не найдена")
     
-    report = detector.detect_folder(input_folder, output_folder, conf_thres=conf_thres)
+    report = detector.detect_folder(input_folder, output_folder, conf_thres)
     
     return report
 

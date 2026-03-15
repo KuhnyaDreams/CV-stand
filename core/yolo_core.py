@@ -13,7 +13,7 @@ class YOLO26Detector:
         self.conf_thres = conf_thres
         print(f"Модель загружена. Доступные классы: {len(self.model.names)}")
     
-    def detect_folder(self, input_folder, output_folder, save_images=True, save_txt=False):
+    def detect_folder(self, input_folder, output_folder, conf_thres=0.25, save_images=True, save_txt=False):
         """
         Детекция на всей папке
         Возвращает структурированный результат
@@ -27,10 +27,9 @@ class YOLO26Detector:
             save=save_images,
             save_txt=save_txt,
             exist_ok=True,
-            conf=self.conf_thres
+            conf=conf_thres
         )
         
-        # Формируем детальный отчёт
         report = {
             "timestamp": datetime.datetime.now().isoformat(),
             "model": "yolo26x",
@@ -98,11 +97,6 @@ def main():
             json.dump(report, f, indent=2, ensure_ascii=False)
         print(f"JSON отчёт сохранён: {json_path}")
     
-    # Вывод в консоль
-    for img in report['images']:
-        print(f"\n{img['filename']}: {len(img['objects'])} объектов")
-        for obj in img['objects']:
-            print(f"  {obj['class']} ({obj['confidence']:.2f})")
 
 if __name__ == "__main__":
     main()
