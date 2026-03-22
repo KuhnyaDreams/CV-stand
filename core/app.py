@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import uvicorn
 from typing import List, Optional
@@ -46,7 +47,10 @@ async def detect_file(request: DetectRequest = Body(...)):
     class_ids = detector.get_class_ids(request.class_names) or None
     results = detector.detect_single(request.input_path, request.output_path, classes=class_ids)
 
-    return create_report(request, results)
+    report = create_report(request, results)
+    with open(f'{request.output_path}/result.json', 'x', encoding='utf-8') as f:
+        json.dump(report, f, indent=2, ensure_ascii=False)
+    return report
 
 
 @app.post("/detect/folder")
@@ -60,7 +64,10 @@ async def detect_folder(request: DetectRequest = Body(...)):
     class_ids = detector.get_class_ids(request.class_names) or None
     results = detector.detect_folder(request.input_path, request.output_path, classes=class_ids)
 
-    return create_report(request, results)
+    report = create_report(request, results)
+    with open(f'{request.output_path}/result.json', 'x', encoding='utf-8') as f:
+        json.dump(report, f, indent=2, ensure_ascii=False)
+    return report
 
 
 def create_report(request: DetectRequest, results):
