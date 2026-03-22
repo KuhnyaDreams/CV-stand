@@ -1,17 +1,19 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse, FileResponse
+import datetime
 import os
-import shutil
-import uuid
-from pathlib import Path
+import uvicorn
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException, Body
+from pydantic import BaseModel
 from yolo_core import YOLO26Detector
 
-app = FastAPI(title="YOLO26 CV Core", description="Ядро компьютерного зрения на YOLO26")
 
+app = FastAPI(title="YOLO26 CV Core", description="Ядро компьютерного зрения на YOLO26")
 detector = YOLO26Detector(model_path="yolo26x.pt")
 
-TEMP_DIR = "/tmp/yolo_uploads"
-os.makedirs(TEMP_DIR, exist_ok=True)
+class DetectRequest(BaseModel):
+    input_path: str
+    output_path: str = "results"
+    class_names: Optional[List[str]] = None
 
 @app.get("/")
 def root():
@@ -19,71 +21,79 @@ def root():
         "service": "YOLO26 CV Core",
         "status": "active",
         "model": "yolo26x",
-        "classes": len(detector.model.names)
     }
+
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @app.get("/classes")
 def get_classes():
     """Возвращает список классов, которые умеет распознавать модель"""
     return {"classes": detector.model.names}
 
+
 @app.post("/detect/file")
-async def detect_file(file: UploadFile = File(...), conf_thres: float = 0.25):
+async def detect_file(request: DetectRequest = Body(...)):
     """
     Загрузить одно изображение и получить детекции
     """
+    if not os.path.exists(request.input_path):
+        raise HTTPException(status_code=404, detail=f"Путь {request.input_path} не найден")
 
-    file_ext = Path(file.filename).suffix
-    file_id = str(uuid.uuid4())
-    temp_path = os.path.join(TEMP_DIR, f"{file_id}{file_ext}")
-    
-    with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    
-    output_dir = os.path.join(TEMP_DIR, f"out_{file_id}")
-    
-    results = detector.detect_single(temp_path, output_dir)
-    
-    response = []
+    class_ids = detector.get_class_ids(request.class_names) or None
+    results = detector.detect_single(request.input_path, request.output_path, classes=class_ids)
+
+    return create_report(request, results)
+
+
+@app.post("/detect/folder")
+async def detect_folder(request: DetectRequest = Body(...)):
+    """
+    Обработать целую папку с изображениями
+    """
+    if not os.path.exists(request.input_path):
+        raise HTTPException(status_code=404, detail=f"Папка {request.input_path} не найдена")
+
+    class_ids = detector.get_class_ids(request.class_names) or None
+    results = detector.detect_folder(request.input_path, request.output_path, classes=class_ids)
+
+    return create_report(request, results)
+
+
+def create_report(request: DetectRequest, results):
+    report = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "model": "yolo26x",
+        "conf_thres": detector.conf_thres,
+        "input_folder": request.input_path,
+        "output_folder": request.output_path,
+        "total_images": len(results),
+        "images": []
+    }
+
     for result in results:
+        image_data = {
+            "path": result.path,
+            "filename": os.path.basename(result.path),
+            "objects": []
+        }
+
         for box in result.boxes:
-            response.append({
+            obj = {
                 "class": detector.model.names[int(box.cls)],
                 "class_id": int(box.cls),
                 "confidence": float(box.conf),
                 "bbox": box.xyxy[0].tolist() if hasattr(box, 'xyxy') else []
-            })
-    
-    os.remove(temp_path)
-    shutil.rmtree(output_dir, ignore_errors=True)
-    
-    return {"detections": response}
+            }
+            image_data["objects"].append(obj)
 
-@app.post("/detect/folder")
-async def detect_folder(input_folder: str, output_folder: str = "results", conf_thres: float = 0.25):
-    """
-    Обработать целую папку с изображениями
-    input_folder должен быть доступен внутри контейнера
-    """
-    if not os.path.exists(input_folder):
-        raise HTTPException(status_code=404, detail=f"Папка {input_folder} не найдена")
-    
-    report = detector.detect_folder(input_folder, output_folder, conf_thres)
-    
+        report["images"].append(image_data)
+
     return report
 
-@app.get("/results/{folder_name}/{filename}")
-async def get_result_file(folder_name: str, filename: str):
-    """Получить файл с результатами"""
-    file_path = os.path.join("/app/results", folder_name, filename)
-    if os.path.exists(file_path):
-        return FileResponse(file_path)
-    return {"error": "File not found"}
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
