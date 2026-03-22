@@ -6,7 +6,7 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/data
-      - ./results:/app/results
+      - ./results:/results
       - ./core:/app
     environment:
       - PYTHONUNBUFFERED=1

@@ -11,7 +11,6 @@ class YOLO26Detector:
                       input_path,
                       output_path,
                       save_images=True,
-                      save_txt=True,
                       classes=None
                       ):
         """
@@ -24,7 +23,6 @@ class YOLO26Detector:
             project=output_path,
             name=".",
             save=save_images,
-            save_txt=save_txt,
             conf=self.conf_thres,
             classes=classes
         )
@@ -33,7 +31,6 @@ class YOLO26Detector:
                       input_path,
                       output_path,
                       save_images=True,
-                      save_txt=True,
                       classes=None
                       ):
         """
@@ -46,7 +43,6 @@ class YOLO26Detector:
             project=output_path,
             name=".",
             save=save_images,
-            save_txt=save_txt,
             conf=self.conf_thres,
             classes=classes
         )

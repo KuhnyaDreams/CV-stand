@@ -1,3 +1,4 @@
+from pathlib import Path
 import requests
 import os
 import json
@@ -5,67 +6,59 @@ import time
 
 CORE_URL = os.getenv("CORE_URL", "http://localhost:8000")
 
-def test_single_image(image_path):
+
+def test_image(input_path):
     """Тестируем одно изображение через API ядра"""
-    print(f"Тестирование {image_path}...")
-    
-    with open(image_path, 'rb') as f:
-        files = {'file': f}
-        response = requests.post(f"{CORE_URL}/detect/file", files=files)
-    
+
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    path = Path(input_path)
+    name, suffix = path.stem, path.suffix
+
+    params = {
+        "input_path": f"/data/{input_path}",
+        "output_path": f"/results/singles/{timestamp}-{name}{suffix}",
+        "class_names": ["person", "cell phone"]
+    }
+
+    response = requests.post(f"{CORE_URL}/detect/file", json=params)
+
     if response.status_code == 200:
-        detections = response.json()['detections']
-        print(f"Найдено объектов: {len(detections)}")
-        for d in detections:
-            print(f"  {d['class']} ({d['confidence']:.2f})")
-        return detections
+        report = response.json()
+        with open(f'../results/singles/{timestamp}-{name}.json', 'x', encoding='utf-8') as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+        return report
     else:
         print(f"Ошибка: {response.status_code}")
         return None
 
-def batch_test_folder(input_folder, output_json=None):
+
+def test_folder(input_path, output_path):
     """
     Обрабатывает все изображения в папке через эндпоинт /detect/folder (POST с query-параметрами).
     Результаты (изображения с рамками) сохраняются в /app/results внутри core,
     что соответствует локальной папке results.
     """
-    print(f"Пакетная обработка папки {input_folder}...")
-    
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    output_subdir = f"batch_{timestamp}"
-    
+    output_subdir = f"{output_path}-{timestamp}"
+
     params = {
-        "input_folder": input_folder,
-        "output_folder": f"/app/results/{output_subdir}",
-        "conf_thres": 0.25
+        "input_path": f"/data/{input_path}",
+        "output_path": f"/results/{output_subdir}",
+        "class_names": ["person", "cell phone"]
     }
-    
-    response = requests.post(f"{CORE_URL}/detect/folder", params=params)
-    
+
+    response = requests.post(f"{CORE_URL}/detect/folder", json=params)
+
     if response.status_code == 200:
         report = response.json()
-        print(f"Обработано изображений: {report.get('total_images', 0)}")
-        
-        if output_json:
-            with open(output_json, 'w', encoding='utf-8') as f:
-                json.dump(report, f, indent=2, ensure_ascii=False)
-            print(f"Отчёт сохранён в {output_json}")
-        
-        print(f"Результаты (изображения) сохранены в локальной папке results/{output_subdir}")
+        with open(f'../results/{output_subdir}', 'w', encoding='utf-8') as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
         return report
     else:
-        print(f"Ошибка при вызове /detect/folder: {response.status_code}")
-        print(response.text)
+        print(f"Ошибка: {response.status_code}")
         return None
-    
+
+
 if __name__ == "__main__":
-    try:
-        response = requests.get(f"{CORE_URL}/health")
-        print("Ядро доступно!")
-        print(requests.get(f"{CORE_URL}/").json())
-    except:
-        print("Не удалось подключиться к ядру")
-        exit(1)
-    
-    batch_test_folder("/data/berzerk", "/results/result.json")
-    
+    response = test_image("phone.jpg")
+    print(response)
