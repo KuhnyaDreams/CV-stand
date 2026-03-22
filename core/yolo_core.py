@@ -24,7 +24,8 @@ class YOLO26Detector:
             name=".",
             save=save_images,
             conf=self.conf_thres,
-            classes=classes
+            classes=classes,
+            exist_ok=True
         )
 
     def detect_single(self,
@@ -44,7 +45,8 @@ class YOLO26Detector:
             name=".",
             save=save_images,
             conf=self.conf_thres,
-            classes=classes
+            classes=classes,
+            exist_ok=True
         )
 
     def get_class_ids(self, class_names : str = None):

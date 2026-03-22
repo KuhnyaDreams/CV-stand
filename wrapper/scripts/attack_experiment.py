@@ -16,7 +16,7 @@ def test_image(input_path):
 
     params = {
         "input_path": f"/data/{input_path}",
-        "output_path": f"/results/singles/{timestamp}-{name}{suffix}",
+        "output_path": f"/results/singles/{timestamp}-{name}",
         "class_names": ["person", "cell phone"]
     }
 
@@ -24,7 +24,7 @@ def test_image(input_path):
 
     if response.status_code == 200:
         report = response.json()
-        with open(f'../results/singles/{timestamp}-{name}.json', 'x', encoding='utf-8') as f:
+        with open(f'../../results/singles/{timestamp}-{name}/result.json', 'x', encoding='utf-8') as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
         return report
     else:
@@ -51,7 +51,7 @@ def test_folder(input_path, output_path):
 
     if response.status_code == 200:
         report = response.json()
-        with open(f'../results/{output_subdir}', 'w', encoding='utf-8') as f:
+        with open(f'../results/{output_subdir}', 'x', encoding='utf-8') as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
         return report
     else:
