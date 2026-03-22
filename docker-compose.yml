@@ -13,22 +13,6 @@ services:
     networks:
       - cv-network
 
-  wrapper:
-    build: ./wrapper
-    container_name: yolo26-wrapper
-    volumes:
-      - ./data:/data
-      - ./results:/results
-      - ./wrapper/scripts:/workspace/scripts
-    environment:
-      - CORE_URL=http://core:8000
-    depends_on:
-      - core
-    networks:
-      - cv-network
-    stdin_open: true
-    tty: true
-
   jupyter:
     image: jupyter/base-notebook:latest
     container_name: yolo26-jupyter

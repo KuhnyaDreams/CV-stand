@@ -2,9 +2,8 @@ import requests
 import os
 import json
 import time
-from pathlib import Path
 
-CORE_URL = os.getenv("CORE_URL", "http://core:8000")
+CORE_URL = os.getenv("CORE_URL", "http://localhost:8000")
 
 def test_single_image(image_path):
     """Тестируем одно изображение через API ядра"""
