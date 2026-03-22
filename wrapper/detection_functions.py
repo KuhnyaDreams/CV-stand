@@ -5,7 +5,7 @@ import time
 
 CORE_URL = os.getenv("CORE_URL", "http://localhost:8000")
 
-def test_image(input_path):
+def detect_image(input_path):
     """Тестируем одно изображение через API ядра"""
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -28,7 +28,7 @@ def test_image(input_path):
         return None
 
 
-def test_folder(input_path):
+def detect_folder(input_path):
     """
     Обрабатывает все изображения в папке через эндпоинт /detect/folder (POST с json-параметрами).
     Результаты (изображения с рамками) сохраняются в /app/results внутри core,
@@ -51,8 +51,4 @@ def test_folder(input_path):
     else:
         print(f"Ошибка: {response.status_code}")
         return None
-
-
-if __name__ == "__main__":
-    response = test_folder('')
-
+    
