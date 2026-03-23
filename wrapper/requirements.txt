@@ -4,5 +4,3 @@ pillow
 matplotlib
 jupyter
 opencv-python
-scipy
-pyyaml
