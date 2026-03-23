@@ -118,6 +118,3 @@ ehthumbs.db
 Thumbs.db
 
 /yolov5/
-
-wrapper/data/*
-wrapper/results/*
