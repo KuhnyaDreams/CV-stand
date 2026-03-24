@@ -17,7 +17,6 @@ def find_image(filename: str = "test.jpg") -> str:
         if Path(path).exists():
             return path
     
-    # Return first path for error message
     return possible_paths[1]
 
 

@@ -295,7 +295,7 @@ class AttackEvaluator:
                 cv2.imwrite(temp_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
                 result = detect_image(temp_filename)
                 adv_detections =  len(result["images"][0]["objects"]) if result else 0
-                success = adv_detections < baseline_detections if baseline_detections > 0 else False
+                success = adv_detections != baseline_detections
                 cv2.imwrite(final_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
                 try:
                     os.remove(temp_path)
@@ -343,7 +343,7 @@ class AttackEvaluator:
                 cv2.imwrite(temp_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
                 result = detect_image(temp_filename)
                 adv_detections =  len(result["images"][0]["objects"]) if result else 0
-                success = adv_detections < baseline_detections if baseline_detections > 0 else False
+                success = adv_detections != baseline_detections
                 cv2.imwrite(final_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
                 try:
                     os.remove(temp_path)
