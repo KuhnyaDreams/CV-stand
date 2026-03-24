@@ -77,10 +77,15 @@ def _print_detection_summary(result: dict, title: str = "Detection Results", ver
 
 
 def detect_image(input_path, verbose: bool = False):
+    import time
+    from pathlib import Path
+    import requests
+    import json
+
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     path = Path(input_path)
     name, suffix = path.stem, path.suffix
-    
+
     core_input_path = _normalize_path_for_core(input_path)
 
     params = {
@@ -89,25 +94,30 @@ def detect_image(input_path, verbose: bool = False):
         "class_names": ["person", "cell phone"]
     }
 
+    print(f"📷 Обрабатываем изображение: {input_path}")
+    print(f"   Core path: {core_input_path}")
+    print(f"   Параметры запроса: {json.dumps(params, indent=2)}")
+
     try:
         response = requests.post(f"{CORE_URL}/detect/file", json=params, timeout=30)
 
         if response.status_code == 200:
             report = response.json()
+            print(f"✅ Ответ API получен: {json.dumps(report, indent=2)}")
             if verbose:
                 _print_detection_summary(report, f"Image Detection: {name}", verbose=True)
             return report
         elif response.status_code == 500:
             error_msg = response.text[:100] if response.text else "Internal Server Error"
             print(f"⚠️  API Error 500: {error_msg}")
-            print(f"   File: {core_input_path}")
+            print(f"   Файл: {core_input_path}")
             return None
         else:
             print(f"❌ Ошибка {response.status_code}: {response.text[:100]}")
             return None
     except requests.exceptions.ConnectionError:
         print(f"❌ Не удалось подключиться к {CORE_URL}")
-        print("   Убедитесь что core запущен: docker-compose up -d")
+        print("   Убедитесь, что core запущен: docker-compose up -d")
         return None
     except Exception as e:
         print(f"❌ Ошибка при обработке: {str(e)}")

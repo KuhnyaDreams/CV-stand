@@ -120,6 +120,7 @@ class WhiteBoxAttacks(AdversarialAttacks):
 
 
 class BlackBoxAttacks(AdversarialAttacks):
+    
     def single_pixel_attack(self, image: np.ndarray, num_modifications: Optional[int] = None) -> np.ndarray:
         if num_modifications is None:
             config = get_config()
@@ -131,7 +132,12 @@ class BlackBoxAttacks(AdversarialAttacks):
             x = np.random.randint(0, w)
             adversarial[y, x] = np.random.randint(0, 256, 3)
         return adversarial
-    
+    """
+    Полностью заливает изображение черным цветом
+    """
+    def blackout_attack(self, image: np.ndarray) -> np.ndarray:
+        return np.zeros_like(image, dtype=np.uint8)
+
     def random_noise_attack(self, image: np.ndarray, noise_level: Optional[float] = None) -> np.ndarray:
         if noise_level is None:
             config = get_config()
@@ -234,7 +240,7 @@ class AttackEvaluator:
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         print("\n[1/3] Getting baseline detections...")
         baseline = detect_image(image_path)
-        baseline_count = len(baseline.get('detections', [])) if baseline else 0
+        baseline_count = len(baseline["images"][0]["objects"]) if baseline else 0
         print(f"  ✓ Baseline detections: {baseline_count}")
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         attack_output = os.path.join(self.output_dir, f"attack_{timestamp}")
@@ -321,6 +327,7 @@ class AttackEvaluator:
             'Contrast': lambda: bb.contrast_attack(image),
             'Rotation': lambda: bb.rotation_attack(image),
             'Perspective': lambda: bb.perspective_transform_attack(image),
+            'Blackout': lambda: bb.blackout_attack(image),
         }
         for idx, (name, attack_func) in enumerate(attacks.items(), 1):
             try:
