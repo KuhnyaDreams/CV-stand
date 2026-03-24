@@ -36,6 +36,7 @@ def print_report(report: dict):
     print(f"\n📈 Total Attacks: {summary.get('total_attacks', '?')}")
     print(f"✅ Successful Attacks: {summary.get('successful_attacks', '?')}")
     
+    print("arbuz")
     success_rate = (summary.get('successful_attacks', 0) / summary.get('total_attacks', 1)) * 100
     print(f"🎯 Success Rate: {success_rate:.1f}%")
     

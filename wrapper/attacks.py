@@ -274,7 +274,7 @@ class AttackEvaluator:
         wb = WhiteBoxAttacks()
         results = {}
         baseline_result = detect_image(original_path)
-        baseline_detections = len(baseline_result.get('detections', [])) if baseline_result else 0
+        baseline_detections = len(baseline_result["images"][0]["objects"]) if baseline_result else 0
         attacks = {
             'FGSM': lambda: wb.fgsm_attack(image),
             'PGD': lambda: wb.pgd_attack(image),
@@ -294,7 +294,7 @@ class AttackEvaluator:
                         temp_path = temp_filename
                 cv2.imwrite(temp_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
                 result = detect_image(temp_filename)
-                adv_detections = len(result.get('detections', [])) if result else 0
+                adv_detections =  len(result["images"][0]["objects"]) if result else 0
                 success = adv_detections < baseline_detections if baseline_detections > 0 else False
                 cv2.imwrite(final_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
                 try:
@@ -317,7 +317,7 @@ class AttackEvaluator:
         bb = BlackBoxAttacks()
         results = {}
         baseline_result = detect_image(original_path)
-        baseline_detections = len(baseline_result.get('detections', [])) if baseline_result else 0
+        baseline_detections = len(baseline_result["images"][0]["objects"]) if baseline_result else 0
         attacks = {
             'Single_Pixel': lambda: bb.single_pixel_attack(image),
             'Random_Noise': lambda: bb.random_noise_attack(image),
@@ -342,7 +342,7 @@ class AttackEvaluator:
                         temp_path = temp_filename
                 cv2.imwrite(temp_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
                 result = detect_image(temp_filename)
-                adv_detections = len(result.get('detections', [])) if result else 0
+                adv_detections =  len(result["images"][0]["objects"]) if result else 0
                 success = adv_detections < baseline_detections if baseline_detections > 0 else False
                 cv2.imwrite(final_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
                 try:
