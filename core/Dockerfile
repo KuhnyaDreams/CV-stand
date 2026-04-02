@@ -17,7 +17,7 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY yolo_core.py .
+COPY yolo_detector.py .
 COPY app.py .
 
 RUN python -c "from ultralytics import YOLO; YOLO('yolo26x.pt')"
