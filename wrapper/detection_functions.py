@@ -18,7 +18,7 @@ def detect_image(input_path):
         "class_names": ["person", "cell phone"]
     }
 
-    response = requests.post(f"{CORE_URL}/detect/file", json=params)
+    response = requests.post(f"{CORE_URL}/detect", json=params)
 
     if response.status_code == 200:
         report = response.json()
@@ -30,7 +30,7 @@ def detect_image(input_path):
 
 def detect_folder(input_path):
     """
-    Обрабатывает все изображения в папке через эндпоинт /detect/folder (POST с json-параметрами).
+    Обрабатывает все изображения в папке через эндпоинт /detect (POST с json-параметрами).
     Результаты (изображения с рамками) сохраняются в /app/results внутри core,
     что соответствует локальной папке results.
     """
@@ -43,7 +43,7 @@ def detect_folder(input_path):
         "class_names": ["person", "cell phone"]
     }
 
-    response = requests.post(f"{CORE_URL}/detect/folder", json=params)
+    response = requests.post(f"{CORE_URL}/detect", json=params)
 
     if response.status_code == 200:
         report = response.json()
