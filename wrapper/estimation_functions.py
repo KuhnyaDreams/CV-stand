@@ -5,15 +5,15 @@ import time
 
 CORE_URL = os.getenv("CORE_URL", "http://localhost:8000")
 
-def estimate_image(input_path):
-    """Тестируем одно изображение через API ядра"""
+
+def estimate(input_path):
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     path = Path(input_path)
     name, suffix = path.stem, path.suffix
 
     params = {
         "input_path": f"/data/{input_path}",
-        "output_path": f"/results/estimation/singles/{timestamp}-{name}",
+        "output_path": f"/results/estimation/{timestamp}-{name}",
     }
 
     response = requests.post(f"{CORE_URL}/estimate", json=params)
@@ -24,3 +24,7 @@ def estimate_image(input_path):
     else:
         print(f"Ошибка: {response.status_code}")
         return None
+
+
+if __name__ == "__main__":
+    estimate('video.mp4')

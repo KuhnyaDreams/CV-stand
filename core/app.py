@@ -49,7 +49,7 @@ async def detect(request: DetectRequest = Body(...)):
     return report
 
 
-@app.get("/estimate")
+@app.post("/estimate")
 async def estimate(request: EstimateRequest = Body(...)):
     """
     Обработать изображение/видеозапись и получить отчет/размеч

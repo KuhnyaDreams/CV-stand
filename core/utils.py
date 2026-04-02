@@ -1,7 +1,7 @@
 import datetime
 import os
 
-from core.schemas import EstimateRequest, DetectRequest
+from schemas import EstimateRequest, DetectRequest
 
 keypoint_names = {
     0: 'nose',
@@ -39,19 +39,22 @@ def create_estimation_report(request: EstimateRequest, results, estimator):
         image_data = {
             "path": result.path,
             "filename": os.path.basename(result.path),
-            "keypoints": []
+            "objects": []
         }
 
-        for keypoints in result.keypoints.data:
-            for kpt_idx, kpt in enumerate(keypoints):
+        for person_keypoints in result.keypoints.data:
+            keypoints = {}
+            for kpt_idx, kpt in enumerate(person_keypoints):
                 x, y, conf = float(kpt[0]), float(kpt[1]), float(kpt[2])
 
                 point_name = keypoint_names[kpt_idx]
-                image_data["keypoints"][point_name] = {
+                keypoints[point_name] = {
                     "x": x,
                     "y": y,
-                    "confidence": conf,
+                    "confidence": conf
                 }
+
+            image_data["objects"].append(keypoints)
 
         report["images"].append(image_data)
 
