@@ -14,7 +14,7 @@ def detect_image(input_path):
 
     params = {
         "input_path": f"/data/{input_path}",
-        "output_path": f"/results/singles/{timestamp}-{name}",
+        "output_path": f"/results/detection/singles/{timestamp}-{name}",
         "class_names": ["person", "cell phone"]
     }
 
@@ -39,7 +39,7 @@ def detect_folder(input_path):
 
     params = {
         "input_path": f"/data/{input_path}",
-        "output_path": f"/results/{output_subdir}",
+        "output_path": f"/results/detection/{output_subdir}",
         "class_names": ["person", "cell phone"]
     }
 
