@@ -68,55 +68,386 @@ class AdversarialAttacks:
 
 
 class WhiteBoxAttacks(AdversarialAttacks):
-    def fgsm_attack(self, image: np.ndarray, epsilon: Optional[float] = None) -> np.ndarray:
-        if epsilon is None:
-            config = get_config()
-            epsilon = config.get('white_box_attacks', {}).get('fgsm', {}).get('epsilon', 0.03)
-        image_normalized = image.astype(np.float32) / 255.0
-        noise = np.random.randn(*image.shape) * (epsilon * 255)
-        adversarial = image_normalized + noise / 255.0
-        adversarial = np.clip(adversarial, 0, 1)
-        return (adversarial * 255).astype(np.uint8)
-    
-    def pgd_attack(self, image: np.ndarray, epsilon: Optional[float] = None, num_steps: Optional[int] = None) -> np.ndarray:
-        if epsilon is None or num_steps is None:
-            config = get_config()
-            pgd_config = config.get('white_box_attacks', {}).get('pgd', {})
-            epsilon = epsilon if epsilon is not None else pgd_config.get('epsilon', 0.03)
-            num_steps = num_steps if num_steps is not None else pgd_config.get('num_steps', 7)
-        image_normalized = image.astype(np.float32) / 255.0
-        adversarial = image_normalized.copy()
-        for step in range(num_steps):
-            noise = np.random.randn(*image.shape) * (epsilon / num_steps * 255)
-            adversarial_normalized = adversarial + noise / 255.0
-            perturbation = adversarial_normalized - image_normalized
-            perturbation = np.clip(perturbation, -epsilon, epsilon)
-            adversarial = image_normalized + perturbation
-            adversarial = np.clip(adversarial, 0, 1)
-        return (adversarial * 255).astype(np.uint8)
-    
-    def deepfool_attack(self, image: np.ndarray, num_classes: Optional[int] = None) -> np.ndarray:
-        if num_classes is None:
-            config = get_config()
-            num_classes = config.get('white_box_attacks', {}).get('deepfool', {}).get('num_classes', 80)
-        image_normalized = image.astype(np.float32) / 255.0
-        perturbation = np.random.randn(*image.shape) * 0.02
-        adversarial = np.clip(image_normalized + perturbation, 0, 1)
-        return (adversarial * 255).astype(np.uint8)
-    
-    def jsma_attack(self, image: np.ndarray, theta: Optional[float] = None, gamma: Optional[float] = None) -> np.ndarray:
-        if theta is None or gamma is None:
-            config = get_config()
-            jsma_config = config.get('white_box_attacks', {}).get('jsma', {})
-            theta = theta if theta is not None else jsma_config.get('theta', 1.0)
-            gamma = gamma if gamma is not None else jsma_config.get('gamma', 0.1)
-        image_normalized = image.astype(np.float32) / 255.0
+    def _get_detector(self):
+        try:
+            from core.yolo_core import YOLO26Detector
+            return YOLO26Detector()
+        except Exception:
+            return None
+
+    def _get_bboxes(self, detector, image: np.ndarray):
+        """Return list of bboxes as (x1, y1, x2, y2, conf) in integer coords."""
+        try:
+            results = detector.model(image, conf=detector.conf_thres)
+            if not results:
+                return []
+            res = results[0]
+            boxes = []
+            if hasattr(res, 'boxes') and res.boxes is not None:
+                # ultralytics Results.boxes has xyxy and conf
+                xyxy = getattr(res.boxes, 'xyxy', None)
+                confs = getattr(res.boxes, 'conf', None)
+                if xyxy is not None:
+                    xyxy = xyxy.cpu().numpy() if hasattr(xyxy, 'cpu') else np.array(xyxy)
+                    confs = confs.cpu().numpy() if hasattr(confs, 'cpu') else np.array(confs)
+                    for i, box in enumerate(xyxy):
+                        x1, y1, x2, y2 = map(int, box[:4])
+                        conf = float(confs[i]) if len(confs) > i else 0.0
+                        boxes.append((x1, y1, x2, y2, conf))
+            return boxes
+        except Exception:
+            return []
+
+    def _perturb_bboxes(self, image: np.ndarray, bboxes: List[tuple], strength: float = 0.05, mode: str = 'fgsm') -> np.ndarray:
+        adv = image.astype(np.float32).copy()
         h, w = image.shape[:2]
-        saliency = np.random.rand(h, w) * gamma
-        for _ in range(int(h * w * 0.01)):
-            y, x = np.unravel_index(np.argmax(saliency), saliency.shape)
-            image_normalized[y, x] = np.clip(image_normalized[y, x] + theta / 255.0, 0, 1)
-        return (image_normalized * 255).astype(np.uint8)
+        for (x1, y1, x2, y2, conf) in bboxes:
+            x1 = max(0, min(w - 1, x1))
+            x2 = max(0, min(w, x2))
+            y1 = max(0, min(h - 1, y1))
+            y2 = max(0, min(h, y2))
+            if x2 <= x1 or y2 <= y1:
+                continue
+            region = adv[y1:y2, x1:x2]
+            if mode == 'fgsm':
+                # signed perturbation scaled by strength and confidence
+                perturb = np.sign(np.mean(region, axis=2, keepdims=True) - 127.5)
+                region = region + (perturb * (strength * 255) * (1.0 + conf))
+            elif mode == 'pgd':
+                perturb = np.random.normal(0, 1, region.shape)
+                region = region + perturb * (strength * 255) * (1.0 + conf)
+            elif mode == 'deepfool':
+                region = region * (1.0 - 0.5 * strength * (1.0 + conf))
+            elif mode == 'jsma':
+                region = 255 - region * (0.5 * strength * (1.0 + conf))
+            region = np.clip(region, 0, 255)
+            adv[y1:y2, x1:x2] = region
+        return adv.astype(np.uint8)
+
+    # --- Attempt to use external attack libraries when possible ---
+    def _try_foolbox_fgsm(self, image: np.ndarray, epsilon: float) -> Optional[np.ndarray]:
+        # Potentially white-box: uses Foolbox on the underlying PyTorch model.
+        # This will be a true white-box attack only if `detector.model` unwraps
+        # to a `torch.nn.Module` and Foolbox can access gradients.
+        try:
+            import torch
+            import foolbox as fb
+            detector = self._get_detector()
+            if detector is None:
+                return None
+            # try to get underlying torch module
+            net = getattr(detector.model, 'model', detector.model)
+            # build a foolbox model; bounds 0-255
+            fmodel = fb.PyTorchModel(net, bounds=(0, 255))
+            img_t = torch.tensor(image).permute(2, 0, 1).unsqueeze(0).float()
+            # use a dummy label (many detector-based models are incompatible)
+            label = torch.tensor([0])
+            attack = fb.attacks.FGSM()
+            raw, clipped, is_adv = attack(fmodel, img_t, label, epsilons=epsilon)
+            out = clipped[0].permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+            return out
+        except Exception:
+            return None
+
+    def _try_foolbox_single_pixel(self, image: np.ndarray, max_pixel: int = 1) -> Optional[np.ndarray]:
+        # Potentially white-box via Foolbox SinglePixelAttack if model is reachable.
+        try:
+            import torch
+            import foolbox as fb
+            detector = self._get_detector()
+            if detector is None:
+                return None
+            net = getattr(detector.model, 'model', detector.model)
+            fmodel = fb.PyTorchModel(net, bounds=(0, 255))
+            img_t = torch.tensor(image).permute(2, 0, 1).unsqueeze(0).float()
+            label = torch.tensor([0])
+            attack = fb.attacks.SinglePixelAttack()
+            raw, clipped, is_adv = attack(fmodel, img_t, label, max_pixels=max_pixel)
+            out = clipped[0].permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+            return out
+        except Exception:
+            return None
+
+    def fgsm_attack(self, image: np.ndarray, epsilon: Optional[float] = None, target_class: Optional[int] = None, targeted: bool = False) -> np.ndarray:
+        config = get_config()
+        if epsilon is None:
+            epsilon = config.get('white_box_attacks', {}).get('fgsm', {}).get('epsilon', 0.03)
+        detector = self._get_detector()
+        # Try Foolbox (preferred for many models), then ART, then direct PyTorch autograd.
+        try:
+            fb_res = self._foolbox_attack(image, epsilon, attack_name='FGSM', targeted=targeted, target_label=target_class)
+            if fb_res is not None:
+                return fb_res
+        except Exception:
+            pass
+        try:
+            art_res = self._art_fgsm(image, epsilon, targeted=targeted, target_label=target_class)
+            if art_res is not None:
+                return art_res
+        except Exception:
+            pass
+        # Try a true white-box PyTorch FGSM next (requires model+grad access).
+        try:
+            real = self._fgsm_pytorch(image, epsilon, target_class=target_class, targeted=targeted)
+            if real is not None:
+                return real
+        except Exception:
+            pass
+
+        # NOTE: The fallback below is NOT a true white-box FGSM — it is
+        # an heuristic perturbation applied to detected bounding boxes.
+        if detector is None:
+            # fallback behavior (no detector): add random noise scaled by epsilon
+            image_normalized = image.astype(np.float32) / 255.0
+            noise = np.random.randn(*image.shape) * (epsilon * 255)
+            adversarial = image_normalized + noise / 255.0
+            adversarial = np.clip(adversarial, 0, 1)
+            return (adversarial * 255).astype(np.uint8)
+        bboxes = self._get_bboxes(detector, image)
+        if not bboxes:
+            return image
+        return self._perturb_bboxes(image, bboxes, strength=epsilon, mode='fgsm')
+
+    def _fgsm_pytorch(self, image: np.ndarray, epsilon: float) -> Optional[np.ndarray]:
+        """Attempt a true white-box FGSM using PyTorch autograd.
+
+        This method is best-effort: it will try to unwrap the detector to a
+        `torch.nn.Module`, run a forward pass, compute a simple surrogate loss
+        and take a single-step sign gradient. If any step fails (model not
+        available, incompatible outputs, missing torch), it returns None.
+        """
+        def _detection_confidence_loss(self, outputs, device=None, target_class: Optional[int] = None):
+            """Extract a scalar loss from detector outputs: total confidence for target_class
+            or total confidence across all detections. Returns a torch scalar on `device` when possible."""
+            try:
+                import torch
+                # ultralytics Results-like object
+                if hasattr(outputs, 'boxes'):
+                    confs = getattr(outputs.boxes, 'conf', None)
+                    classes = getattr(outputs.boxes, 'cls', None) or getattr(outputs.boxes, 'cls', None)
+                    if confs is not None:
+                        confs_t = confs.cpu() if hasattr(confs, 'cpu') else confs
+                        confs_t = torch.tensor(confs_t, device=device, dtype=torch.float32)
+                        if target_class is not None and classes is not None:
+                            classes_t = classes.cpu() if hasattr(classes, 'cpu') else classes
+                            classes_t = torch.tensor(classes_t, device=device)
+                            mask = (classes_t == int(target_class))
+                            return confs_t[mask].sum() if mask.any() else confs_t.sum()
+                        return confs_t.sum()
+
+                # list/tuple of results
+                if isinstance(outputs, (list, tuple)) and len(outputs) > 0:
+                    total = None
+                    for o in outputs:
+                        try:
+                            l = _detection_confidence_loss(self, o, device=device, target_class=target_class)
+                            if l is not None:
+                                if total is None:
+                                    total = l
+                                else:
+                                    total = total + l
+                        except Exception:
+                            continue
+                    return total
+
+                # dict values
+                if isinstance(outputs, dict):
+                    for v in outputs.values():
+                        try:
+                            l = _detection_confidence_loss(self, v, device=device, target_class=target_class)
+                            if l is not None:
+                                return l
+                        except Exception:
+                            continue
+
+                # fallback: if tensor-like
+                try:
+                    import torch
+                    if isinstance(outputs, torch.Tensor):
+                        return outputs.abs().mean()
+                except Exception:
+                    pass
+            except Exception:
+                return None
+            return None
+
+        try:
+            import torch
+            detector = self._get_detector()
+            if detector is None:
+                return None
+            net = getattr(detector.model, 'model', detector.model)
+            # ensure eval mode
+            try:
+                net.eval()
+            except Exception:
+                pass
+
+            # determine device
+            try:
+                params = list(net.parameters())
+                device = params[0].device if len(params) > 0 else torch.device('cpu')
+            except Exception:
+                device = torch.device('cpu')
+
+            img_t = torch.tensor(image.astype('float32')).permute(2, 0, 1).unsqueeze(0).to(device)
+            img_t.requires_grad = True
+
+            outputs = net(img_t)
+            # try to produce a detection-aware loss
+            loss_tensor = _detection_confidence_loss(self, outputs, device=device, target_class=None)
+            # If target_class/targeted provided in previous call signature, prefer that
+            # (the wrapper will call this method with appropriate args)
+            if loss_tensor is None:
+                # fallback to tensor mean
+                if isinstance(outputs, torch.Tensor):
+                    loss_tensor = outputs.abs().mean()
+                else:
+                    try:
+                        loss_tensor = torch.tensor(outputs).to(device).abs().mean()
+                    except Exception:
+                        return None
+
+            # For untargeted attack we want to reduce detector confidence -> minimize loss
+            # For targeted attack (increase target class confidence) we maximize loss.
+            # Here we treat `loss_tensor` as the quantity to minimize for untargeted attacks.
+            net.zero_grad()
+            if img_t.grad is not None:
+                img_t.grad.zero_()
+            loss_tensor.backward()
+            grad = img_t.grad
+            if grad is None:
+                return None
+            # default behaviour: move in negative gradient direction to reduce loss
+            sign = -1.0
+            perturb = sign * epsilon * 255.0 * torch.sign(grad)
+            adv = (img_t.detach() + perturb).clamp(0, 255)
+            adv_np = adv.squeeze(0).permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+            return adv_np
+        except Exception:
+            return None
+
+    def _foolbox_attack(self, image: np.ndarray, epsilon: float, attack_name: str = 'FGSM', targeted: bool = False, target_label: Optional[int] = None) -> Optional[np.ndarray]:
+        """Run a Foolbox attack when possible. Returns adversarial image or None."""
+        try:
+            import torch
+            import foolbox as fb
+            detector = self._get_detector()
+            if detector is None:
+                return None
+            net = getattr(detector.model, 'model', detector.model)
+            device = next(net.parameters()).device if len(list(net.parameters()))>0 else torch.device('cpu')
+            fmodel = fb.PyTorchModel(net, bounds=(0, 255))
+            img_np = image.astype(np.float32)
+            # foolbox expects batch dimension
+            img_input = img_np
+            if img_input.ndim == 3:
+                img_input = img_input[None,...]
+            # prepare label
+            label = None
+            if targeted and (target_label is not None):
+                label = torch.tensor([int(target_label)], device=device)
+            else:
+                # use dummy label 0 for untargeted attacks when unknown
+                label = torch.tensor([0], device=device)
+
+            if attack_name.upper() == 'FGSM':
+                attack = fb.attacks.FGSM()
+                raw, clipped, is_adv = attack(fmodel, img_input, label, epsilons=epsilon)
+                out = clipped[0].astype(np.uint8)
+                return out
+            elif attack_name.upper() == 'SINGLE_PIXEL':
+                attack = fb.attacks.SinglePixelAttack()
+                raw, clipped, is_adv = attack(fmodel, img_input, label, max_pixels=1)
+                out = clipped[0].astype(np.uint8)
+                return out
+            else:
+                return None
+        except Exception:
+            return None
+
+    def _art_fgsm(self, image: np.ndarray, epsilon: float, targeted: bool = False, target_label: Optional[int] = None) -> Optional[np.ndarray]:
+        """Attempt ART FastGradientMethod attack. Best-effort for detectors."""
+        try:
+            import torch
+            from art.attacks.evasion import FastGradientMethod
+            from art.estimators.classification import PyTorchClassifier
+            detector = self._get_detector()
+            if detector is None:
+                return None
+            net = getattr(detector.model, 'model', detector.model)
+            # build a basic classifier wrapper (ART is classification-first)
+            loss_fn = torch.nn.CrossEntropyLoss()
+            optimizer = torch.optim.SGD(net.parameters(), lr=0.01)
+            input_shape = image.shape
+            nb_classes = 1000
+            classifier = PyTorchClassifier(model=net, loss=loss_fn, optimizer=optimizer, input_shape=input_shape, nb_classes=nb_classes, clip_values=(0.0, 255.0))
+            fgsm = FastGradientMethod(estimator=classifier, eps=epsilon * 255.0)
+            x_adv = fgsm.generate(x=image[None,...])
+            return x_adv[0].astype(np.uint8)
+        except Exception:
+            return None
+
+    def pgd_attack(self, image: np.ndarray, epsilon: Optional[float] = None, num_steps: Optional[int] = None) -> np.ndarray:
+        config = get_config()
+        pgd_config = config.get('white_box_attacks', {}).get('pgd', {})
+        if epsilon is None:
+            epsilon = pgd_config.get('epsilon', 0.03)
+        if num_steps is None:
+            num_steps = pgd_config.get('num_steps', 7)
+        detector = self._get_detector()
+        if detector is None:
+            # fallback
+            image_normalized = image.astype(np.float32) / 255.0
+            adversarial = image_normalized.copy()
+            for step in range(num_steps):
+                noise = np.random.randn(*image.shape) * (epsilon / num_steps * 255)
+                adversarial_normalized = adversarial + noise / 255.0
+                perturbation = adversarial_normalized - image_normalized
+                perturbation = np.clip(perturbation, -epsilon, epsilon)
+                adversarial = image_normalized + perturbation
+                adversarial = np.clip(adversarial, 0, 1)
+            return (adversarial * 255).astype(np.uint8)
+        adv = image.copy()
+        for step in range(num_steps):
+            bboxes = self._get_bboxes(detector, adv)
+            adv = self._perturb_bboxes(adv, bboxes, strength=(epsilon / num_steps), mode='pgd')
+        return adv
+
+    def deepfool_attack(self, image: np.ndarray, num_classes: Optional[int] = None) -> np.ndarray:
+        config = get_config()
+        if num_classes is None:
+            num_classes = config.get('white_box_attacks', {}).get('deepfool', {}).get('num_classes', 80)
+        detector = self._get_detector()
+        if detector is None:
+            image_normalized = image.astype(np.float32) / 255.0
+            perturbation = np.random.randn(*image.shape) * 0.02
+            adversarial = np.clip(image_normalized + perturbation, 0, 1)
+            return (adversarial * 255).astype(np.uint8)
+        bboxes = self._get_bboxes(detector, image)
+        if not bboxes:
+            return image
+        # apply a stronger localized darkening to reduce detection
+        return self._perturb_bboxes(image, bboxes, strength=0.05, mode='deepfool')
+
+    def jsma_attack(self, image: np.ndarray, theta: Optional[float] = None, gamma: Optional[float] = None) -> np.ndarray:
+        config = get_config()
+        jsma_config = config.get('white_box_attacks', {}).get('jsma', {})
+        theta = theta if theta is not None else jsma_config.get('theta', 1.0)
+        gamma = gamma if gamma is not None else jsma_config.get('gamma', 0.1)
+        detector = self._get_detector()
+        if detector is None:
+            image_normalized = image.astype(np.float32) / 255.0
+            h, w = image.shape[:2]
+            saliency = np.random.rand(h, w) * gamma
+            for _ in range(int(h * w * 0.01)):
+                y, x = np.unravel_index(np.argmax(saliency), saliency.shape)
+                image_normalized[y, x] = np.clip(image_normalized[y, x] + theta / 255.0, 0, 1)
+            return (image_normalized * 255).astype(np.uint8)
+        bboxes = self._get_bboxes(detector, image)
+        if not bboxes:
+            return image
+        return self._perturb_bboxes(image, bboxes, strength=gamma, mode='jsma')
 
 
 class BlackBoxAttacks(AdversarialAttacks):

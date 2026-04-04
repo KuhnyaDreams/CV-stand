@@ -6,3 +6,8 @@ jupyter
 opencv-python
 scipy
 pyyaml
+foolbox
+torch
+torchvision
+art
+flask
