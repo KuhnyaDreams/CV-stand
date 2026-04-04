@@ -1,25 +1,15 @@
-import datetime
 import json
 import os
 import uvicorn
-from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Body
-from pydantic import BaseModel
 from yolo_detector import YOLO26Detector
-
+from yolo_pose import YOLO26PoseEstimator
+from schemas import DetectRequest, EstimateRequest
+from utils import create_detection_report, create_estimation_report
 
 app = FastAPI(title="YOLO26 CV Core", description="Ядро компьютерного зрения на YOLO26")
 detector = YOLO26Detector(model_path="yolo26x.pt")
-
-class DetectRequest(BaseModel):
-    input_path: str
-    output_path: str = "results"
-    class_names: Optional[List[str]] = None
-
-
-class EstimateRequest(BaseModel):
-    input_path: str
-    output_path: str = "results"
+estimator = YOLO26PoseEstimator(model_path='yolo26s-pose.pt')
 
 
 @app.get("/")
@@ -53,52 +43,24 @@ async def detect(request: DetectRequest = Body(...)):
     class_ids = detector.get_class_ids(request.class_names) or None
     results = detector.detect(request.input_path, request.output_path, classes=class_ids)
 
-    report = create_detection_report(request, results)
+    report = create_detection_report(request, results, detector)
     with open(f'{request.output_path}/result.json', 'x', encoding='utf-8') as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
     return report
 
 
-@app.get("/pose")
+@app.post("/estimate")
 async def estimate(request: EstimateRequest = Body(...)):
     """
     Обработать изображение/видеозапись и получить отчет/размеч
     """
+    if not os.path.exists(request.input_path):
+        raise HTTPException(status_code=404, detail=f"Путь {request.input_path} не найден")
 
-
-def create_estimation_report(request: EstimateRequest, results):
-    pass
-
-
-def create_detection_report(request: DetectRequest, results):
-    report = {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "model": "yolo26x",
-        "conf_thres": detector.conf_thres,
-        "input_folder": request.input_path,
-        "output_folder": request.output_path,
-        "total_images": len(results),
-        "images": []
-    }
-
-    for result in results:
-        image_data = {
-            "path": result.path,
-            "filename": os.path.basename(result.path),
-            "objects": []
-        }
-
-        for box in result.boxes:
-            obj = {
-                "class": detector.detector.names[int(box.cls)],
-                "class_id": int(box.cls),
-                "confidence": float(box.conf),
-                "bbox": box.xyxy[0].tolist() if hasattr(box, 'xyxy') else []
-            }
-            image_data["objects"].append(obj)
-
-        report["images"].append(image_data)
-
+    results = estimator.estimate(request.input_path, request.output_path)
+    report = create_estimation_report(request, results, estimator)
+    with open(f'{request.output_path}/result.json', 'x', encoding='utf-8') as f:
+        json.dump(report, f, indent=2, ensure_ascii=False)
     return report
 
 
