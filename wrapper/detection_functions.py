@@ -19,12 +19,11 @@ def detect_image(input_path):
     }
 
     response = requests.post(f"{CORE_URL}/detect", json=params)
-
     if response.status_code == 200:
         report = response.json()
         return report
     else:
-        print(f"Ошибка: {response.status_code}")
+        print(f"Ошибка: {response.status_code} | {response.text}")
         return None
 
 
