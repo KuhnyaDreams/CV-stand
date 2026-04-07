@@ -2,7 +2,8 @@
 import sys
 import argparse
 from pathlib import Path
-from attacks import AttackEvaluator, find_image_path, load_config
+from attacks import load_config
+from attack_eval import AttackEvaluator
 import json
 
 
