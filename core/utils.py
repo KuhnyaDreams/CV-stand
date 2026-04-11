@@ -1,7 +1,7 @@
 import datetime
 import os
 
-from schemas import EstimateRequest, DetectRequest
+from schemas import EstimateRequest, DetectRequest, SegmentRequest
 
 keypoint_names = {
     0: 'nose',
@@ -87,6 +87,52 @@ def create_detection_report(request: DetectRequest, results, detector):
                 "bbox": box.xyxy[0].tolist() if hasattr(box, 'xyxy') else []
             }
             image_data["objects"].append(obj)
+
+        report["images"].append(image_data)
+
+    return report
+
+
+def create_segmentation_report(request: SegmentRequest, results, segmentor):
+    """
+    Формирует отчёт по результатам сегментации.
+    Включает маски (полигоны), уверенность, классы, а также bbox (опционально).
+    """
+
+    report = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "model": "yolo26x-seg",                 
+        "conf_thres": segmentor.conf_thres,
+        "input_folder": request.input_path,
+        "output_folder": request.output_path,
+        "total_images": len(results),
+        "images": []
+    }
+
+    for result in results:
+        image_data = {
+            "path": result.path,
+            "filename": os.path.basename(result.path),
+            "objects": [] 
+        }
+
+        if result.masks is not None:
+            for i in range(len(result.masks)):
+                cls_id = int(result.boxes.cls[i].item())
+                confidence = float(result.boxes.conf[i].item())
+                class_name = result.names[cls_id]
+                polygon = result.masks.xy[i].tolist()
+                bbox = result.boxes.xyxy[i].tolist() if hasattr(result.boxes, 'xyxy') else []
+                obj = {
+                    "class": class_name,
+                    "class_id": cls_id,
+                    "confidence": confidence,
+                    "polygon": polygon,
+                    "bbox": bbox
+                }
+                image_data["objects"].append(obj)
+        else:
+            image_data["objects"] = []
 
         report["images"].append(image_data)
 

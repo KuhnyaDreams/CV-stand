@@ -11,3 +11,9 @@ class DetectRequest(BaseModel):
 class EstimateRequest(BaseModel):
     input_path: str
     output_path: str = "results"
+
+
+class SegmentRequest(BaseModel):
+    input_path: str
+    output_path: str = "results"
+    class_names: Optional[List[str]] = None
