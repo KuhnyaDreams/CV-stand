@@ -2,17 +2,20 @@ import json
 import os
 import uvicorn
 from fastapi import FastAPI, HTTPException, Body
-from yolo_detector import YOLO26Detector
-from yolo_pose import YOLO26PoseEstimator
-from yolo_segmentor import YOLO26Segmentor
-from schemas import DetectRequest, EstimateRequest, SegmentRequest
-from utils import create_report
+from yolo_model import YOLOModel
+from schemas import DetectRequest, EstimateRequest, SegmentRequest, PredictRequest
+from utils import create_report, keypoint_names
 
 app = FastAPI(title="YOLO26 CV Core", description="Ядро компьютерного зрения на YOLO26")
-detector = YOLO26Detector(model_path="yolo26x.pt")
-estimator = YOLO26PoseEstimator(model_path='yolo26x-pose.pt')
-segmentor = YOLO26Segmentor(model_path="yolo26x-seg.pt")
+detector = YOLOModel(model_path="yolo26x.pt", task='detect')
+estimator = YOLOModel(model_path='yolo26x-pose.pt', task='pose')
+segmentor = YOLOModel(model_path="yolo26x-seg.pt", task='segment')
 
+AVAILABLE_TASKS = {
+    "detect": detector,
+    "pose": estimator,
+    "segment": segmentor
+}
 
 @app.get("/")
 def root():
@@ -21,9 +24,9 @@ def root():
         "service": "YOLO26 CV Core",
         "status": "active",
         "models": {
-            "detect": "yolo26x.pt",
-            "pose": "yolo26x-pose.pt",
-            "segment": "yolo26x-seg.pt"
+            "detect": detector.model_name,
+            "pose": estimator.model_name,
+            "segment": segmentor.model_name
         }
     }
 
@@ -47,7 +50,7 @@ def get_classes(model: str = "detect"):
     elif model == "pose":
         return {
             "model": "pose",
-            "keypoints": estimator.estimator.names
+            "keypoints": keypoint_names
         }
     elif model == "segment":
         return {
@@ -57,54 +60,65 @@ def get_classes(model: str = "detect"):
     else:
         raise HTTPException(status_code=400, detail="Unknown model. Use 'detect', 'pose', or 'segment'")
 
+@app.post("/predict")
+async def predict(request: PredictRequest = Body(...)):
+    """
+    Универсальный эндпоинт для детекции, позы или сегментации.
+    Поле task определяет модель: 'detect', 'pose', 'segment'.
+    """
+    if not os.path.exists(request.input_path):
+        raise HTTPException(status_code=404, detail=f"Путь {request.input_path} не найден")
+
+    if request.task not in AVAILABLE_TASKS:
+        raise HTTPException(status_code=400, detail=f"Unknown task. Available: {list(AVAILABLE_TASKS.keys())}")
+    model = AVAILABLE_TASKS[request.task]
+
+    results = model.predict(
+        input_path=request.input_path,
+        output_path=request.output_path,
+        save_images=request.save_images,
+        classes=model.get_class_ids(request.class_names),
+        show_boxes=request.show_boxes
+    )
+
+    report = create_report(request, results, model)
+    json_path = os.path.join(request.output_path, "result.json")
+    with open(json_path, 'x', encoding='utf-8') as f:
+        json.dump(report, f, indent=2, ensure_ascii=False)
+    return report
 
 @app.post("/detect")
 async def detect(request: DetectRequest = Body(...)):
-    """Детекция объектов на изображении(ях) или видео.
-    Обрабатывает изображение/папку/видеозапись, в результате получается отчет и размеченные изображения"""
-
-    if not os.path.exists(request.input_path):
-        raise HTTPException(status_code=404, detail=f"Путь {request.input_path} не найден")
-
-    class_ids = detector.get_class_ids(request.class_names)
-    results = detector.detect(request.input_path, request.output_path, request.save_images, classes=class_ids)
-
-    report = create_report(request, results, detector)
-    with open(f'{request.output_path}/result.json', 'x', encoding='utf-8') as f:
-        json.dump(report, f, indent=2, ensure_ascii=False)
-    return report
-
+    pred_req = PredictRequest(
+        task='detect',
+        input_path=request.input_path,
+        output_path=request.output_path,
+        save_images=request.save_images,
+        class_names=request.class_names,
+        show_boxes=request.show_boxes
+    )
+    return await predict(pred_req)
 
 @app.post("/estimate")
 async def estimate(request: EstimateRequest = Body(...)):
-    """Определение ключевых точек человека.
-    Обрабатывает изображение/папку/видеозапись, в результате получается отчет и размеченные изображения"""
-
-    if not os.path.exists(request.input_path):
-        raise HTTPException(status_code=404, detail=f"Путь {request.input_path} не найден")
-
-    results = estimator.estimate(request.input_path, request.output_path, request.save_images)
-
-    report = create_report(request, results, estimator)
-    with open(f'{request.output_path}/result.json', 'x', encoding='utf-8') as f:
-        json.dump(report, f, indent=2, ensure_ascii=False)
-    return report
+    pred_req = PredictRequest(
+        task='pose',
+        input_path=request.input_path,
+        output_path=request.output_path,
+        save_images=request.save_images
+    )
+    return await predict(pred_req)
 
 @app.post("/segment")
 async def segment_objects(request: SegmentRequest = Body(...)):
-    """Сегментация экземпляров на изображении(ях) или видео.
-    Обрабатывает изображение/папку/видеозапись, в результате получается отчет и размеченные изображения"""
-
-    if not os.path.exists(request.input_path):
-        raise HTTPException(status_code=404, detail=f"Путь {request.input_path} не найден")
-
-    class_ids = segmentor.get_class_ids(request.class_names)
-    results = segmentor.segment(request.input_path, request.output_path, request.save_images, classes=class_ids)
-
-    report = create_report(request, results, segmentor)
-    with open(f'{request.output_path}/result.json', "x", encoding="utf-8") as f:
-        json.dump(report, f, indent=2, ensure_ascii=False)
-    return report
+    pred_req = PredictRequest(
+        task='segment',
+        input_path=request.input_path,
+        output_path=request.output_path,
+        save_images=request.save_images,
+        class_names=request.class_names
+    )
+    return await predict(pred_req)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
