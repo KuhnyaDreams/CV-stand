@@ -6,46 +6,70 @@ from yolo_detector import YOLO26Detector
 from yolo_pose import YOLO26PoseEstimator
 from yolo_segmentor import YOLO26Segmentor
 from schemas import DetectRequest, EstimateRequest, SegmentRequest
-from utils import create_detection_report, create_estimation_report, create_segmentation_report
+from utils import create_report
 
 app = FastAPI(title="YOLO26 CV Core", description="Ядро компьютерного зрения на YOLO26")
 detector = YOLO26Detector(model_path="yolo26x.pt")
-estimator = YOLO26PoseEstimator(model_path='yolo26s-pose.pt')
+estimator = YOLO26PoseEstimator(model_path='yolo26x-pose.pt')
 segmentor = YOLO26Segmentor(model_path="yolo26x-seg.pt")
 
 
 @app.get("/")
 def root():
+    """Основная информация о сервисе и доступных моделях"""
     return {
         "service": "YOLO26 CV Core",
         "status": "active",
-        "model": "yolo26x",
+        "models": {
+            "detect": "yolo26x.pt",
+            "pose": "yolo26x-pose.pt",
+            "segment": "yolo26x-seg.pt"
+        }
     }
-
 
 @app.get("/health")
 def health():
+    """Проверка работоспособности сервиса"""
     return {"status": "ok"}
 
-
 @app.get("/classes")
-def get_classes():
-    """Возвращает список классов, которые умеет распознавать модель"""
-    return {"classes": detector.detector.names}
+def get_classes(model: str = "detect"):
+    """
+    Возвращает список классов или ключевых точек для указанной модели.
+    Параметры:
+        model: 'detect' (по умолчанию), 'pose', 'segment'
+    """
+    if model == "detect":
+        return {
+            "model": "detect",
+            "classes": detector.detector.names
+        }
+    elif model == "pose":
+        return {
+            "model": "pose",
+            "keypoints": estimator.estimator.names
+        }
+    elif model == "segment":
+        return {
+            "model": "segment",
+            "classes": segmentor.segmentor.names
+        }
+    else:
+        raise HTTPException(status_code=400, detail="Unknown model. Use 'detect', 'pose', or 'segment'")
 
 
 @app.post("/detect")
 async def detect(request: DetectRequest = Body(...)):
-    """
-    Обработать изображение/папку и получить отчет/размеченные изображения
-    """
+    """Детекция объектов на изображении(ях) или видео.
+    Обрабатывает изображение/папку/видеозапись, в результате получается отчет и размеченные изображения"""
+
     if not os.path.exists(request.input_path):
         raise HTTPException(status_code=404, detail=f"Путь {request.input_path} не найден")
 
-    class_ids = detector.get_class_ids(request.class_names) or None
-    results = detector.detect(request.input_path, request.output_path, classes=class_ids)
+    class_ids = detector.get_class_ids(request.class_names)
+    results = detector.detect(request.input_path, request.output_path, request.save_images, classes=class_ids)
 
-    report = create_detection_report(request, results, detector)
+    report = create_report(request, results, detector)
     with open(f'{request.output_path}/result.json', 'x', encoding='utf-8') as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
     return report
@@ -53,31 +77,33 @@ async def detect(request: DetectRequest = Body(...)):
 
 @app.post("/estimate")
 async def estimate(request: EstimateRequest = Body(...)):
-    """
-    Обработать изображение/видеозапись и получить отчет/размеч
-    """
+    """Определение ключевых точек человека.
+    Обрабатывает изображение/папку/видеозапись, в результате получается отчет и размеченные изображения"""
+
     if not os.path.exists(request.input_path):
         raise HTTPException(status_code=404, detail=f"Путь {request.input_path} не найден")
 
-    results = estimator.estimate(request.input_path, request.output_path)
-    report = create_estimation_report(request, results, estimator)
+    results = estimator.estimate(request.input_path, request.output_path, request.save_images)
+
+    report = create_report(request, results, estimator)
     with open(f'{request.output_path}/result.json', 'x', encoding='utf-8') as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
     return report
 
 @app.post("/segment")
 async def segment_objects(request: SegmentRequest = Body(...)):
-    """Обрабатывает изображение/папку и возвращает JSON с масками сегментации."""
+    """Сегментация экземпляров на изображении(ях) или видео.
+    Обрабатывает изображение/папку/видеозапись, в результате получается отчет и размеченные изображения"""
+
     if not os.path.exists(request.input_path):
         raise HTTPException(status_code=404, detail=f"Путь {request.input_path} не найден")
 
-    class_ids = segmentor.get_class_ids(request.class_names) if request.class_names else None
+    class_ids = segmentor.get_class_ids(request.class_names)
+    results = segmentor.segment(request.input_path, request.output_path, request.save_images, classes=class_ids)
 
-    results = segmentor.segment(request.input_path, request.output_path, classes=class_ids)
-    report = create_segmentation_report(request, results, segmentor)
+    report = create_report(request, results, segmentor)
     with open(f'{request.output_path}/result.json', "x", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
-
     return report
 
 if __name__ == "__main__":

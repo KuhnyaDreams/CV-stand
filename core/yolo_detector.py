@@ -1,11 +1,13 @@
 from ultralytics import YOLO
 import os
+from typing import List, Optional
 
 
 class YOLO26Detector:
     def __init__(self, model_path="yolo26x.pt", conf_thres=0.25):
         self.detector = YOLO(model_path)
         self.conf_thres = conf_thres
+        self.model_name = "yolo26x"
 
     def detect(self,
                input_path,
@@ -14,7 +16,7 @@ class YOLO26Detector:
                classes=None
                ):
         """
-        Детекция
+        Детекция изображений/видео/папки
         """
         os.makedirs(output_path, exist_ok=True)
 
@@ -27,15 +29,9 @@ class YOLO26Detector:
             classes=classes,
             exist_ok=True
         )
-
-    def get_class_ids(self, class_names: str = None):
-        """Преобразует имя класса в его ID, если класс существует."""
-        if class_names is None:
-            return []
-
-        result_ids = []
-        for idx, name in self.detector.names.items():
-            if name in class_names:
-                result_ids.append(idx)
-
-        return result_ids
+    
+    def get_class_ids(self, class_names: Optional[List[str]] = None):
+        """Преобразует имена классов в их ID"""
+        if not class_names:
+            return None
+        return [idx for idx, name in self.detector.names.items() if name in class_names]

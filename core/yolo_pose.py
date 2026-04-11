@@ -3,9 +3,10 @@ import os
 
 
 class YOLO26PoseEstimator:
-    def __init__(self, model_path="yolo26s-pose.pt", conf_thres=0.25):
+    def __init__(self, model_path="yolo26x-pose.pt", conf_thres=0.25):
         self.estimator = YOLO(model_path)
         self.conf_thres = conf_thres
+        self.model_name = "yolo26x-pose"
 
     def estimate(self,
                  input_path,
