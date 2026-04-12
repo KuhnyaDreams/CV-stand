@@ -3,18 +3,20 @@ import os
 import uvicorn
 from fastapi import FastAPI, HTTPException, Body
 from yolo_model import YOLOModel
-from schemas import DetectRequest, EstimateRequest, SegmentRequest, PredictRequest
+from schemas import DetectRequest, EstimateRequest, SegmentRequest, PredictRequest, ClassifyRequest
 from utils import create_report, keypoint_names
 
 app = FastAPI(title="YOLO26 CV Core", description="Ядро компьютерного зрения на YOLO26")
 detector = YOLOModel(model_path="yolo26x.pt", task='detect')
 estimator = YOLOModel(model_path='yolo26x-pose.pt', task='estimate')
 segmentor = YOLOModel(model_path="yolo26x-seg.pt", task='segment')
+classifier = YOLOModel(model_path="yolo26x-cls.pt", task='classify')
 
 AVAILABLE_TASKS = {
     "detect": detector,
     "estimate": estimator,
-    "segment": segmentor
+    "segment": segmentor,
+    "classify": classifier
 }
 
 @app.get("/")
@@ -57,6 +59,8 @@ def get_classes(model: str = "detect"):
             "model": "segment",
             "classes": segmentor.segmentor.names
         }
+    elif model == "classify":
+        return {"model": "classify", "classes": classifier.model.names}
     else:
         raise HTTPException(status_code=400, detail="Unknown model. Use 'detect', 'estimate', or 'segment'")
 
@@ -116,6 +120,16 @@ async def segment_objects(request: SegmentRequest = Body(...)):
         output_path=request.output_path,
         save_images=request.save_images,
         class_names=request.class_names
+    )
+    return await predict(pred_req)
+
+@app.post("/classify")
+async def segment_objects(request: ClassifyRequest = Body(...)):
+    pred_req = PredictRequest(
+        task='classify',
+        input_path=request.input_path,
+        output_path=request.output_path,
+        save_images=request.save_images,
     )
     return await predict(pred_req)
 
