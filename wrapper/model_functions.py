@@ -14,7 +14,7 @@ def _call_core(task, input_path, class_names = None, save_images = True, show_bo
 
     output_subdir = {
         'detect': 'detection',
-        'pose': 'estimation',
+        'estimate': 'estimation',
         'segment': 'segmentation'
     }.get(task, 'unknown')
 
@@ -28,10 +28,10 @@ def _call_core(task, input_path, class_names = None, save_images = True, show_bo
         "save_images": save_images,
         "show_boxes": show_boxes,
     }
-    if task != 'pose':
+    if task != 'estimate':
         params["class_names"] = class_names
 
-    response = requests.post(f"{CORE_URL}/predict", json=params)
+    response = requests.post(f"{CORE_URL}/{task}", json=params)
 
     if response.status_code == 200:
         return response.json()
@@ -43,7 +43,7 @@ def detect(input_path, class_names = None, save_images = True, show_boxes = True
     return _call_core('detect', input_path, class_names, save_images, show_boxes)
 
 def estimate(input_path, save_images = True):
-    return _call_core('pose', input_path, None, save_images)
+    return _call_core('estimate', input_path, None, save_images)
 
 def segment(input_path, class_names = None, save_images = True):
     return _call_core('segment', input_path, class_names, save_images)

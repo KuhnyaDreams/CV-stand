@@ -29,7 +29,7 @@ def create_report(request: Any, results: List, model: Any):
 
     main_attribute = results[0]
     if main_attribute.keypoints is not None:
-        task = 'pose'
+        task = 'estimate'
     elif main_attribute.masks is not None:
         task = 'segment'
     elif main_attribute.boxes is not None:
@@ -66,7 +66,7 @@ def create_report(request: Any, results: List, model: Any):
                 }
                 image_data["objects"].append(obj)
 
-        elif task == 'pose':
+        elif task == 'estimate':
             for person_kpts in result.keypoints.data:
                 keypoints = {}
                 for kpt_idx, (x, y, conf) in enumerate(person_kpts):

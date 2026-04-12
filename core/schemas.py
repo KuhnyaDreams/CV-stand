@@ -16,7 +16,7 @@ class DetectRequest(PredictRequest):
     show_boxes: bool = True
 
 class EstimateRequest(PredictRequest):
-    task: str = 'pose'
+    task: str = 'estimate'
 
 
 class SegmentRequest(PredictRequest):

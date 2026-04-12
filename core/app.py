@@ -8,12 +8,12 @@ from utils import create_report, keypoint_names
 
 app = FastAPI(title="YOLO26 CV Core", description="Ядро компьютерного зрения на YOLO26")
 detector = YOLOModel(model_path="yolo26x.pt", task='detect')
-estimator = YOLOModel(model_path='yolo26x-pose.pt', task='pose')
+estimator = YOLOModel(model_path='yolo26x-pose.pt', task='estimate')
 segmentor = YOLOModel(model_path="yolo26x-seg.pt", task='segment')
 
 AVAILABLE_TASKS = {
     "detect": detector,
-    "pose": estimator,
+    "estimate": estimator,
     "segment": segmentor
 }
 
@@ -25,7 +25,7 @@ def root():
         "status": "active",
         "models": {
             "detect": detector.model_name,
-            "pose": estimator.model_name,
+            "estimate": estimator.model_name,
             "segment": segmentor.model_name
         }
     }
@@ -40,16 +40,16 @@ def get_classes(model: str = "detect"):
     """
     Возвращает список классов или ключевых точек для указанной модели.
     Параметры:
-        model: 'detect' (по умолчанию), 'pose', 'segment'
+        model: 'detect' (по умолчанию), 'estimate', 'segment'
     """
     if model == "detect":
         return {
             "model": "detect",
             "classes": detector.detector.names
         }
-    elif model == "pose":
+    elif model == "estimate":
         return {
-            "model": "pose",
+            "model": "estimate",
             "keypoints": keypoint_names
         }
     elif model == "segment":
@@ -58,13 +58,12 @@ def get_classes(model: str = "detect"):
             "classes": segmentor.segmentor.names
         }
     else:
-        raise HTTPException(status_code=400, detail="Unknown model. Use 'detect', 'pose', or 'segment'")
+        raise HTTPException(status_code=400, detail="Unknown model. Use 'detect', 'estimate', or 'segment'")
 
-@app.post("/predict")
 async def predict(request: PredictRequest = Body(...)):
     """
-    Универсальный эндпоинт для детекции, позы или сегментации.
-    Поле task определяет модель: 'detect', 'pose', 'segment'.
+    Универсальная функция для детекции, позы или сегментации.
+    Поле task определяет модель: 'detect', 'estimate', 'segment'.
     """
     if not os.path.exists(request.input_path):
         raise HTTPException(status_code=404, detail=f"Путь {request.input_path} не найден")
@@ -102,7 +101,7 @@ async def detect(request: DetectRequest = Body(...)):
 @app.post("/estimate")
 async def estimate(request: EstimateRequest = Body(...)):
     pred_req = PredictRequest(
-        task='pose',
+        task='estimate',
         input_path=request.input_path,
         output_path=request.output_path,
         save_images=request.save_images
