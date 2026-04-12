@@ -22,3 +22,5 @@ class EstimateRequest(PredictRequest):
 class SegmentRequest(PredictRequest):
     task: str = 'segment'
 
+class ClassifyRequest(PredictRequest):
+    task: str = 'classify'

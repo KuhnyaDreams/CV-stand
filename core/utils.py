@@ -27,15 +27,7 @@ def create_report(request: Any, results: List, model: Any):
     if not results:
         return {}
 
-    main_attribute = results[0]
-    if main_attribute.keypoints is not None:
-        task = 'estimate'
-    elif main_attribute.masks is not None:
-        task = 'segment'
-    elif main_attribute.boxes is not None:
-        task = 'detect'
-    else:
-        return {}
+    task = model.task
 
     conf_thres = getattr(model, 'conf_thres', 0.25)
 
@@ -89,6 +81,20 @@ def create_report(request: Any, results: List, model: Any):
                         "polygon": result.masks.xy[i].tolist()
                     }
                     image_data["objects"].append(obj)
+            
+        elif task == 'classify':
+            probs = result.probs
+            all_probs = probs.data.cpu().tolist()
+            predictions = []
+            for class_id, confidence in enumerate(all_probs):
+                if confidence > 0:
+                    predictions.append({
+                        "class": result.names[class_id],
+                        "class_id": class_id,
+                        "confidence": confidence
+                    })
+            predictions.sort(key=lambda x: x["confidence"], reverse=True)
+            image_data["objects"] = predictions
 
         report["images"].append(image_data)
 

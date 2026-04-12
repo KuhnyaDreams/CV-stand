@@ -15,7 +15,8 @@ def _call_core(task, input_path, class_names = None, save_images = True, show_bo
     output_subdir = {
         'detect': 'detection',
         'estimate': 'estimation',
-        'segment': 'segmentation'
+        'segment': 'segmentation',
+        'classify': 'classification',
     }.get(task, 'unknown')
 
     if output_subdir == 'unknown':
@@ -28,7 +29,7 @@ def _call_core(task, input_path, class_names = None, save_images = True, show_bo
         "save_images": save_images,
         "show_boxes": show_boxes,
     }
-    if task != 'estimate':
+    if task != 'estimate' and task != 'classify':
         params["class_names"] = class_names
 
     response = requests.post(f"{CORE_URL}/{task}", json=params)
@@ -47,3 +48,7 @@ def estimate(input_path, save_images = True):
 
 def segment(input_path, class_names = None, save_images = True):
     return _call_core('segment', input_path, class_names, save_images)
+
+def classify(input_path, save_images = True):
+    """Классификация изображения/папки."""
+    return _call_core('classify', input_path, None, save_images)

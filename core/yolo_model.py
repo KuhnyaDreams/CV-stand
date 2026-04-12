@@ -32,6 +32,6 @@ class YOLOModel:
 
     def get_class_ids(self, class_names = None):
         """Только для detect/segment. Для estimate возвращает None."""
-        if self.task == 'estimate' or not class_names:
+        if self.task == 'estimate' or self.task == 'classify' or not class_names:
             return None
         return [idx for idx, name in self.model.names.items() if name in class_names]
