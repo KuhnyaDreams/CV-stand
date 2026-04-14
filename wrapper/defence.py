@@ -57,6 +57,18 @@ class DefensePipeline:
         self.defenses = defenses
 
     def apply(self, image: np.ndarray) -> np.ndarray:
-        for defense in self.defenses:
+        # Support several input types for `defenses`:
+        # - a list/iterable of callables
+        # - a single callable
+        # - an instance of `Defenses` (use its `combined` method if available)
+        if hasattr(self.defenses, 'combined') and callable(getattr(self.defenses, 'combined')):
+            return self.defenses.combined(image)
+        if callable(self.defenses):
+            return self.defenses(image)
+        try:
+            iterator = iter(self.defenses)
+        except TypeError:
+            raise TypeError("defenses must be a callable, an iterable of callables, or a Defenses instance")
+        for defense in iterator:
             image = defense(image)
         return image

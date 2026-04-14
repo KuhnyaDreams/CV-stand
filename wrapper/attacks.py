@@ -59,7 +59,8 @@ class AdversarialAttacks:
         adv_bgr = cv2.cvtColor(adv_image.astype(np.uint8), cv2.COLOR_RGB2BGR)
         cv2.imwrite(full_path, adv_bgr)
         return full_path
-    
+
+        
     def evaluate_attack(self, original_image_path: str, adversarial_image_path: str) -> Dict:
         try:
             original_result = detect_image(original_image_path)
