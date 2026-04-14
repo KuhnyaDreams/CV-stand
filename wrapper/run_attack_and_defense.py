@@ -1,6 +1,6 @@
 from defence import DefensePipeline, Defenses
 from attack_eval import AttackEvaluator
-from detection_functions import detect_image
+from model_functions import detect
 import cv2
 import os
 
@@ -25,7 +25,7 @@ def run_attack_and_defense(image_path: str):
         cv2.imwrite(temp_path, cv2.cvtColor(defended_image, cv2.COLOR_RGB2BGR))
     except Exception:
         cv2.imwrite(temp_path, defended_image)
-    report = detect_image(temp_filename)
+    report = detect(temp_filename)
     print("====================")
     print(report)
 

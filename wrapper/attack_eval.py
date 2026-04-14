@@ -7,7 +7,7 @@ from typing import Dict
 import os
 import yaml
 
-from detection_functions import detect_image
+from model_functions import detect, classify 
 
 from bb_attacks import BlackBoxAttacks
 from wb_attacks import WhiteBoxAttacks
@@ -18,7 +18,7 @@ class AttackEvaluator:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         self.report = {}
     
-    def run_single_attack_image(self, image_path: str, attack_type: str, attack_name: str) -> (np.ndarray, Dict):
+    def run_single_attack_image(self, image_path: str, attack_type: str, attack_name: str):
         print(f"\nRunning attack: {attack_type} - {attack_name}")
         img = cv2.imread(str(image_path))
         if img is None:
@@ -45,7 +45,7 @@ class AttackEvaluator:
             if not os.path.exists("data"):
                 temp_path = temp_filename
         cv2.imwrite(temp_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
-        report = detect_image(temp_filename)
+        report = detect(temp_filename)
         try:
             os.remove(temp_path)
         except:
@@ -73,7 +73,7 @@ class AttackEvaluator:
             raise ValueError(f"Cannot load image: {image_path}")
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         print("\n[1/3] Getting baseline detections...")
-        baseline = detect_image(image_path)
+        baseline = detect(image_path)
         baseline_count = len(baseline["images"][0]["objects"]) if baseline else 0
         print(f"  ✓ Baseline detections: {baseline_count}")
         timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -125,7 +125,7 @@ class AttackEvaluator:
                     if not os.path.exists("data"):
                         temp_path = temp_filename
                 cv2.imwrite(temp_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
-                result = detect_image(temp_filename)
+                result = detect(temp_filename)
                 adv_detections =  len(result["images"][0]["objects"]) if result else 0
                 success = adv_detections != baseline_detections
                 cv2.imwrite(final_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
@@ -172,7 +172,7 @@ class AttackEvaluator:
                     if not os.path.exists("data"):
                         temp_path = temp_filename
                 cv2.imwrite(temp_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
-                result = detect_image(temp_filename)
+                result = detect(temp_filename)
                 adv_detections =  len(result["images"][0]["objects"]) if result else 0
                 success = adv_detections != baseline_detections
                 cv2.imwrite(final_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))

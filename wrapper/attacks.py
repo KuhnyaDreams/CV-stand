@@ -6,7 +6,7 @@ from typing import Dict
 import os
 import yaml
 
-from detection_functions import detect_image
+from model_functions import detect
 
 CONFIG = None
 
@@ -63,8 +63,8 @@ class AdversarialAttacks:
         
     def evaluate_attack(self, original_image_path: str, adversarial_image_path: str) -> Dict:
         try:
-            original_result = detect_image(original_image_path)
-            adversarial_result = detect_image(adversarial_image_path)
+            original_result = detect(original_image_path)
+            adversarial_result = detect(adversarial_image_path)
             original_detections = len(original_result.get('detections', []))
             adversarial_detections = len(adversarial_result.get('detections', []))
             return {
