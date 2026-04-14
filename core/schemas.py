@@ -2,25 +2,12 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 
-class PredictRequest(BaseModel):
-    task: str
+class DetectRequest(BaseModel):
     input_path: str
-    output_path: str
-    save_images: bool = True
+    output_path: str = "results"
     class_names: Optional[List[str]] = None
-    show_boxes: bool = False
 
 
-class DetectRequest(PredictRequest):
-    task: str = 'detect'
-    show_boxes: bool = True
-
-class EstimateRequest(PredictRequest):
-    task: str = 'estimate'
-
-
-class SegmentRequest(PredictRequest):
-    task: str = 'segment'
-
-class ClassifyRequest(PredictRequest):
-    task: str = 'classify'
+class EstimateRequest(BaseModel):
+    input_path: str
+    output_path: str = "results"

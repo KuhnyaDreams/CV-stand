@@ -1,6 +1,7 @@
 import datetime
 import os
-from typing import Any, List
+
+from schemas import EstimateRequest, DetectRequest
 
 keypoint_names = {
     0: 'nose',
@@ -22,19 +23,12 @@ keypoint_names = {
     16: 'right_ankle'
 }
 
-def create_report(request: Any, results: List, model: Any):
-    """Универсальное формирование отчёта для задач детекции, оценки позы и сегментации. Модель YOLO26"""
-    if not results:
-        return {}
 
-    task = model.task
-
-    conf_thres = getattr(model, 'conf_thres', 0.25)
-
+def create_estimation_report(request: EstimateRequest, results, estimator):
     report = {
         "timestamp": datetime.datetime.now().isoformat(),
-        "model": model.model_name,
-        "conf_thres": conf_thres,
+        "model": "yolo26s-pose",
+        "conf_thres": estimator.conf_thres,
         "input_folder": request.input_path,
         "output_folder": request.output_path,
         "total_images": len(results),
@@ -48,53 +42,51 @@ def create_report(request: Any, results: List, model: Any):
             "objects": []
         }
 
-        if task == 'detect':
-            for box in result.boxes:
-                obj = {
-                    "class": result.names[int(box.cls)],
-                    "class_id": int(box.cls),
-                    "confidence": float(box.conf),
-                    "bbox": box.xyxy[0].tolist()
+        for person_keypoints in result.keypoints.data:
+            keypoints = {}
+            for kpt_idx, kpt in enumerate(person_keypoints):
+                x, y, conf = float(kpt[0]), float(kpt[1]), float(kpt[2])
+
+                point_name = keypoint_names[kpt_idx]
+                keypoints[point_name] = {
+                    "x": x,
+                    "y": y,
+                    "confidence": conf
                 }
-                image_data["objects"].append(obj)
 
-        elif task == 'estimate':
-            for person_kpts in result.keypoints.data:
-                keypoints = {}
-                for kpt_idx, (x, y, conf) in enumerate(person_kpts):
-                    point_name = keypoint_names[kpt_idx]
-                    keypoints[point_name] = {
-                        "x": float(x),
-                        "y": float(y),
-                        "confidence": float(conf)
-                    }
-                image_data["objects"].append(keypoints)
+            image_data["objects"].append(keypoints)
 
-        elif task == 'segment':
-            if result.masks is not None:
-                for i in range(len(result.masks)):
-                    cls_id = int(result.boxes.cls[i].item())
-                    obj = {
-                        "class": result.names[cls_id],
-                        "class_id": cls_id,
-                        "confidence": float(result.boxes.conf[i].item()),
-                        "polygon": result.masks.xy[i].tolist()
-                    }
-                    image_data["objects"].append(obj)
-            
-        elif task == 'classify':
-            probs = result.probs
-            all_probs = probs.data.cpu().tolist()
-            predictions = []
-            for class_id, confidence in enumerate(all_probs):
-                if confidence > 0:
-                    predictions.append({
-                        "class": result.names[class_id],
-                        "class_id": class_id,
-                        "confidence": confidence
-                    })
-            predictions.sort(key=lambda x: x["confidence"], reverse=True)
-            image_data["objects"] = predictions
+        report["images"].append(image_data)
+
+    return report
+
+
+def create_detection_report(request: DetectRequest, results, detector):
+    report = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "model": "yolo26x",
+        "conf_thres": detector.conf_thres,
+        "input_folder": request.input_path,
+        "output_folder": request.output_path,
+        "total_images": len(results),
+        "images": []
+    }
+
+    for result in results:
+        image_data = {
+            "path": result.path,
+            "filename": os.path.basename(result.path),
+            "objects": []
+        }
+
+        for box in result.boxes:
+            obj = {
+                "class": detector.detector.names[int(box.cls)],
+                "class_id": int(box.cls),
+                "confidence": float(box.conf),
+                "bbox": box.xyxy[0].tolist() if hasattr(box, 'xyxy') else []
+            }
+            image_data["objects"].append(obj)
 
         report["images"].append(image_data)
 
