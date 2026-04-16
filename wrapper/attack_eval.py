@@ -7,7 +7,7 @@ from typing import Dict
 import os
 import yaml
 
-from model_functions import detect, classify 
+from model_functions import detect, classify, estimate
 
 from bb_attacks import BlackBoxAttacks
 from wb_attacks import WhiteBoxAttacks
@@ -52,6 +52,39 @@ class AttackEvaluator:
             pass
         return adv_image, report
     
+    def run_pose_estimate_attack(self, image_path: str, attack_type: str, attack_name: str):
+        print(f"\nRunning attack: {attack_type} - {attack_name}")
+        img = cv2.imread(str(image_path))
+        if img is None:
+            raise ValueError(f"Cannot load image: {image_path}")
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        if attack_type == 'white_box':
+            wb = WhiteBoxAttacks()
+            attack_func = getattr(wb, f"{attack_name}", None)
+            if not attack_func:
+                raise ValueError(f"Unknown white-box attack: {attack_name}")
+            adv_image = attack_func(img_rgb)
+        elif attack_type == 'black_box':
+            bb = BlackBoxAttacks()
+            attack_func = getattr(bb, f"{attack_name}", None)
+            if not attack_func:
+                raise ValueError(f"Unknown black-box attack: {attack_name}")
+            adv_image = attack_func(img_rgb)
+        else:
+            raise ValueError(f"Unknown attack type: {attack_type}")
+        temp_filename = f"temp_{attack_type}_{attack_name}.png"
+        temp_path = os.path.join("../data", temp_filename)
+        if not os.path.exists("../data"):
+            temp_path = os.path.join("data", temp_filename)
+            if not os.path.exists("data"):
+                temp_path = temp_filename
+        cv2.imwrite(temp_path, cv2.cvtColor(adv_image, cv2.COLOR_RGB2BGR))
+        report = estimate(temp_filename)
+        try:
+            os.remove(temp_path)
+        except:
+            pass
+        return adv_image, report
     
     def run_comprehensive_test(self, image_path: str) -> Dict:
         
