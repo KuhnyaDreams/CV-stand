@@ -1,9 +1,9 @@
 import numpy as np
 from typing import Tuple, Optional
-from attacks import AdversarialAttacks, get_config
+from config import  get_config
 import cv2
 
-class BlackBoxAttacks(AdversarialAttacks):
+class BlackBoxAttacks():
     
     def single_pixel_attack(self, image: np.ndarray, num_modifications: Optional[int] = None) -> np.ndarray:
         if num_modifications is None:

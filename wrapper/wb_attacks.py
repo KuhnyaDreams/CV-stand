@@ -1,8 +1,8 @@
 import numpy as np
 from typing import  Optional
-from attacks import AdversarialAttacks, get_config
+from config import get_config
 
-class WhiteBoxAttacks(AdversarialAttacks):
+class WhiteBoxAttacks():
     def fgsm_attack(self, image: np.ndarray, epsilon: Optional[float] = None) -> np.ndarray:
         if epsilon is None:
             config = get_config()

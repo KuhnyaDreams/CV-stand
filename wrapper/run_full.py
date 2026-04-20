@@ -2,7 +2,7 @@
 import sys
 import argparse
 from pathlib import Path
-from attacks import load_config
+from config import load_config
 from attack_eval import AttackEvaluator
 import json
 

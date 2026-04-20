@@ -5,7 +5,6 @@ import time
 import json
 from typing import Dict
 import os
-import yaml
 
 from model_functions import detect, classify, estimate
 
