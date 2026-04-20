@@ -172,8 +172,8 @@ Examples:
     
     parser.add_argument(
         '--output', '-o',
-        default='results/attack_results',
-        help='Output directory for results (default: results/attack_results)'
+        default='/results/attack_results',
+        help='Output directory for results (default: /results/attack_results)'
     )
     
     parser.add_argument(

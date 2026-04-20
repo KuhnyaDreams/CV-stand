@@ -1,7 +1,5 @@
-requests
-numpy
-pillow
-matplotlib
-jupyter
-opencv-python
-adversarial-robustness-toolbox
+numpy>=1.21.0
+opencv-python>=4.5.0
+Pillow>=8.0.0
+requests>=2.26.0
+PyYAML>=5.4.0

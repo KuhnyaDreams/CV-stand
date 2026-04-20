@@ -1,54 +1,182 @@
 import numpy as np
-from typing import  Optional
-from config import get_config
+from typing import Optional
+import logging
 
-class WhiteBoxAttacks():
-    def fgsm_attack(self, image: np.ndarray, epsilon: Optional[float] = None) -> np.ndarray:
-        if epsilon is None:
-            config = get_config()
-            epsilon = config.get('white_box_attacks', {}).get('fgsm', {}).get('epsilon', 0.03)
-        image_normalized = image.astype(np.float32) / 255.0
-        noise = np.random.randn(*image.shape) * (epsilon * 255)
-        adversarial = image_normalized + noise / 255.0
-        adversarial = np.clip(adversarial, 0, 1)
-        return (adversarial * 255).astype(np.uint8)
+from base_attacks import AttackBase
+
+logger = logging.getLogger(__name__)
+
+
+class WhiteBoxAttacks(AttackBase):
+    """White-box adversarial attack implementations."""
     
-    def pgd_attack(self, image: np.ndarray, epsilon: Optional[float] = None, num_steps: Optional[int] = None) -> np.ndarray:
-        if epsilon is None or num_steps is None:
-            config = get_config()
-            pgd_config = config.get('white_box_attacks', {}).get('pgd', {})
-            epsilon = epsilon if epsilon is not None else pgd_config.get('epsilon', 0.03)
-            num_steps = num_steps if num_steps is not None else pgd_config.get('num_steps', 7)
-        image_normalized = image.astype(np.float32) / 255.0
+    def fgsm_attack(
+        self,
+        image: np.ndarray,
+        epsilon: Optional[float] = None
+    ) -> np.ndarray:
+        """
+        Fast Gradient Sign Method attack.
+        
+        Args:
+            image: Input image array
+            epsilon: Attack strength (perturbation magnitude)
+            
+        Returns:
+            Adversarial image
+        """
+        self.validate_image(image)
+        
+        if epsilon is None:
+            epsilon = self.get_config_param(
+                'white_box_attacks',
+                'fgsm',
+                'epsilon',
+                0.03
+            )
+        
+        self.log_attack('fgsm_attack', epsilon=epsilon)
+        image_normalized = self.normalize_to_unit(image)
+        noise = np.random.randn(*image.shape) * epsilon
+        adversarial = image_normalized + noise
+        adversarial = self.clip_image(adversarial)
+        return self.denormalize_to_uint8(adversarial)
+    
+    def pgd_attack(
+        self,
+        image: np.ndarray,
+        epsilon: Optional[float] = None,
+        num_steps: Optional[int] = None
+    ) -> np.ndarray:
+        """
+        Projected Gradient Descent attack.
+        
+        Args:
+            image: Input image array
+            epsilon: Maximum perturbation
+            num_steps: Number of iteration steps
+            
+        Returns:
+            Adversarial image
+        """
+        self.validate_image(image)
+        
+        if epsilon is None:
+            epsilon = self.get_config_param(
+                'white_box_attacks',
+                'pgd',
+                'epsilon',
+                0.03
+            )
+        
+        if num_steps is None:
+            num_steps = self.get_config_param(
+                'white_box_attacks',
+                'pgd',
+                'num_steps',
+                7
+            )
+        
+        self.log_attack(
+            'pgd_attack',
+            epsilon=epsilon,
+            num_steps=num_steps
+        )
+        
+        image_normalized = self.normalize_to_unit(image)
         adversarial = image_normalized.copy()
+        
         for step in range(num_steps):
-            noise = np.random.randn(*image.shape) * (epsilon / num_steps * 255)
-            adversarial_normalized = adversarial + noise / 255.0
+            noise = np.random.randn(*image.shape) * (epsilon / num_steps)
+            adversarial_normalized = adversarial + noise
             perturbation = adversarial_normalized - image_normalized
             perturbation = np.clip(perturbation, -epsilon, epsilon)
             adversarial = image_normalized + perturbation
-            adversarial = np.clip(adversarial, 0, 1)
-        return (adversarial * 255).astype(np.uint8)
+            adversarial = self.clip_image(adversarial)
+        
+        return self.denormalize_to_uint8(adversarial)
     
-    def deepfool_attack(self, image: np.ndarray, num_classes: Optional[int] = None) -> np.ndarray:
+    def deepfool_attack(
+        self,
+        image: np.ndarray,
+        num_classes: Optional[int] = None
+    ) -> np.ndarray:
+        """
+        DeepFool attack - minimal adversarial perturbation.
+        
+        Args:
+            image: Input image array
+            num_classes: Number of classes
+            
+        Returns:
+            Adversarial image
+        """
+        self.validate_image(image)
+        
         if num_classes is None:
-            config = get_config()
-            num_classes = config.get('white_box_attacks', {}).get('deepfool', {}).get('num_classes', 80)
-        image_normalized = image.astype(np.float32) / 255.0
+            num_classes = self.get_config_param(
+                'white_box_attacks',
+                'deepfool',
+                'num_classes',
+                80
+            )
+        
+        self.log_attack('deepfool_attack', num_classes=num_classes)
+        
+        image_normalized = self.normalize_to_unit(image)
         perturbation = np.random.randn(*image.shape) * 0.02
-        adversarial = np.clip(image_normalized + perturbation, 0, 1)
-        return (adversarial * 255).astype(np.uint8)
+        adversarial = self.clip_image(image_normalized + perturbation)
+        return self.denormalize_to_uint8(adversarial)
     
-    def jsma_attack(self, image: np.ndarray, theta: Optional[float] = None, gamma: Optional[float] = None) -> np.ndarray:
-        if theta is None or gamma is None:
-            config = get_config()
-            jsma_config = config.get('white_box_attacks', {}).get('jsma', {})
-            theta = theta if theta is not None else jsma_config.get('theta', 1.0)
-            gamma = gamma if gamma is not None else jsma_config.get('gamma', 0.1)
-        image_normalized = image.astype(np.float32) / 255.0
+    def jsma_attack(
+        self,
+        image: np.ndarray,
+        theta: Optional[float] = None,
+        gamma: Optional[float] = None
+    ) -> np.ndarray:
+        """
+        Jacobian-based Saliency Map Attack.
+        
+        Args:
+            image: Input image array
+            theta: Perturbation per pixel
+            gamma: Saliency threshold
+            
+        Returns:
+            Adversarial image
+        """
+        self.validate_image(image)
+        
+        if theta is None:
+            theta = self.get_config_param(
+                'white_box_attacks',
+                'jsma',
+                'theta',
+                1.0
+            )
+        
+        if gamma is None:
+            gamma = self.get_config_param(
+                'white_box_attacks',
+                'jsma',
+                'gamma',
+                0.1
+            )
+        
+        self.log_attack('jsma_attack', theta=theta, gamma=gamma)
+        
+        image_normalized = self.normalize_to_unit(image)
         h, w = image.shape[:2]
         saliency = np.random.rand(h, w) * gamma
-        for _ in range(int(h * w * 0.01)):
+        
+        # Perturb pixels with highest saliency
+        num_pixels = max(1, int(h * w * 0.01))
+        for _ in range(num_pixels):
             y, x = np.unravel_index(np.argmax(saliency), saliency.shape)
-            image_normalized[y, x] = np.clip(image_normalized[y, x] + theta / 255.0, 0, 1)
-        return (image_normalized * 255).astype(np.uint8)
+            image_normalized[y, x] = self.clip_image(
+                image_normalized[y, x] + theta / 255.0
+            )[0] if isinstance(self.clip_image(image_normalized[y, x] + theta / 255.0), np.ndarray) else self.clip_image(
+                image_normalized[y, x] + theta / 255.0
+            )
+        
+        return self.denormalize_to_uint8(image_normalized)
