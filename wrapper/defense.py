@@ -22,6 +22,25 @@ class Defenses:
         'random_resize': {'scale_range': (0.8, 1.2)},
         'normalize_lighting': {},
     }
+
+    @staticmethod
+    def _ensure_image(image: np.ndarray, method_name: str = "defense") -> None:
+        """
+        Validate image is a non-empty numpy array. Raise informative error otherwise.
+        """
+        if image is None:
+            logger.error(f"Empty image passed to {method_name}()")
+            raise ValueError(
+                f"Empty image passed to {method_name}(). Check file path and cv2.imread result."
+            )
+
+        # numpy arrays should have a size attribute
+        size = getattr(image, 'size', None)
+        if size is None or size == 0:
+            logger.error(f"Image with zero size passed to {method_name}()")
+            raise ValueError(
+                f"Image appears empty in {method_name}(). Check file path and cv2.imread result."
+            )
     
     @staticmethod
     def gaussian_blur(
@@ -39,6 +58,9 @@ class Defenses:
         Returns:
             Blurred image
         """
+        # Validate input image
+        Defenses._ensure_image(image, 'gaussian_blur')
+
         if kernel_size % 2 == 0:
             kernel_size += 1
         logger.debug(f"Applying gaussian blur: kernel_size={kernel_size}")
@@ -64,6 +86,9 @@ class Defenses:
         Returns:
             Denoised image
         """
+        # Validate input image
+        Defenses._ensure_image(image, 'denoise')
+
         logger.debug(
             f"Applying denoise: h={h}, "
             f"template_size={template_window_size}, "
@@ -94,14 +119,26 @@ class Defenses:
         Returns:
             Compressed image
         """
+        # Validate input image
+        Defenses._ensure_image(image, 'jpeg_compression')
+
         if not 0 <= quality <= 100:
             logger.warning(f"Quality {quality} out of range [0, 100], clamping")
             quality = max(0, min(100, quality))
         
         logger.debug(f"Applying JPEG compression: quality={quality}")
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
-        _, encimg = cv2.imencode('.jpg', image, encode_param)
+        # Encode/decode to apply JPEG artifacts; guard OpenCV errors
+        success, encimg = cv2.imencode('.jpg', image, encode_param)
+        if not success or encimg is None or encimg.size == 0:
+            logger.error("JPEG encoding failed - image may be invalid")
+            raise ValueError("JPEG compression failed: invalid image or OpenCV error")
+
         decimg = cv2.imdecode(encimg, 1)
+        if decimg is None or getattr(decimg, 'size', 0) == 0:
+            logger.error("JPEG decoding failed - result is empty")
+            raise ValueError("JPEG compression failed: decoded image is empty")
+
         return decimg
     
     @staticmethod
@@ -120,6 +157,9 @@ class Defenses:
         Returns:
             Resized image restored to original size
         """
+        # Validate input image
+        Defenses._ensure_image(image, 'random_resize')
+
         h, w = image.shape[:2]
         scale = np.random.uniform(scale_range[0], scale_range[1])
         
@@ -142,6 +182,9 @@ class Defenses:
         Returns:
             Normalized image
         """
+        # Validate input image
+        Defenses._ensure_image(image, 'normalize_lighting')
+
         logger.debug("Applying lighting normalization")
         return cv2.normalize(image, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
     
@@ -163,6 +206,9 @@ class Defenses:
         Returns:
             Defended image after all transformations
         """
+        # Validate input image early
+        Defenses._ensure_image(image, 'combined')
+
         logger.info("Applying combined defense pipeline")
         image = Defenses.jpeg_compression(image, quality=jpeg_quality)
         image = Defenses.gaussian_blur(image, blur_kernel)
@@ -199,6 +245,13 @@ class DefensePipeline:
         Raises:
             TypeError: If defenses parameter is invalid type
         """
+        # Validate input image first
+        if image is None or getattr(image, 'size', 0) == 0:
+            logger.error("DefensePipeline.apply received empty image")
+            raise ValueError(
+                "DefensePipeline.apply received empty image. Check the image path and cv2.imread result."
+            )
+
         if self.defenses is None:
             logger.warning("No defenses specified, returning image unchanged")
             return image

@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 import cv2
 import logging
 
@@ -15,7 +15,8 @@ class BlackBoxAttacks(AttackBase):
     def single_pixel_attack(
         self,
         image: np.ndarray,
-        num_modifications: Optional[int] = None
+        num_modifications: Optional[int] = None,
+        pixel_coordinates: Optional[List[Tuple[int, int]]] = None
     ) -> np.ndarray:
         """
         Modify random pixels to create adversarial example.
@@ -23,6 +24,7 @@ class BlackBoxAttacks(AttackBase):
         Args:
             image: Input image array
             num_modifications: Number of pixels to modify
+            pixel_coordinates: Optional list of specific pixel coordinates to modify
             
         Returns:
             Adversarial image
@@ -40,12 +42,16 @@ class BlackBoxAttacks(AttackBase):
         self.log_attack('single_pixel_attack', num_modifications=num_modifications)
         adversarial = image.copy()
         h, w = image.shape[:2]
-        
-        for _ in range(num_modifications):
-            y = np.random.randint(0, h)
-            x = np.random.randint(0, w)
-            adversarial[y, x] = np.random.randint(0, 256, 3)
-        
+        for i in range(num_modifications):
+            # If specific pixel coordinates were provided, use them one-by-one.
+            if pixel_coordinates is not None and i < len(pixel_coordinates):
+                x, y = pixel_coordinates[i]
+                if 0 <= x < w and 0 <= y < h:
+                    adversarial[y, x] = np.random.randint(0, 256, 3)
+            else:
+                y = np.random.randint(0, h)
+                x = np.random.randint(0, w)
+                adversarial[y, x] = np.random.randint(0, 256, 3)
         return adversarial
     
     def blackout_attack(self, image: np.ndarray) -> np.ndarray:
@@ -125,7 +131,8 @@ class BlackBoxAttacks(AttackBase):
         self,
         image: np.ndarray,
         patch_size: Optional[int] = None,
-        patch_color: Optional[Tuple] = None
+        patch_color: Optional[Tuple] = None,
+        patch_coordinates: Optional[Tuple[int, int]] = None
     ) -> np.ndarray:
         """
         Apply colored patch to random location.
@@ -134,6 +141,7 @@ class BlackBoxAttacks(AttackBase):
             image: Input image array
             patch_size: Size of patch
             patch_color: RGB color tuple
+            patch_coordinates: Optional (x, y) coordinates for patch placement
             
         Returns:
             Image with adversarial patch
@@ -163,9 +171,11 @@ class BlackBoxAttacks(AttackBase):
         self.log_attack('patch_attack', patch_size=patch_size, patch_color=patch_color)
         adversarial = image.copy()
         h, w = image.shape[:2]
-        
-        y = np.random.randint(0, max(1, h - patch_size))
-        x = np.random.randint(0, max(1, w - patch_size))
+        if patch_coordinates is not None:
+            x, y = patch_coordinates
+        else:
+            y = np.random.randint(0, max(1, h - patch_size))
+            x = np.random.randint(0, max(1, w - patch_size))
         y_end = min(y + patch_size, h)
         x_end = min(x + patch_size, w)
         
