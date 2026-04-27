@@ -2,7 +2,7 @@ import numpy as np
 from typing import Any, Dict, Tuple, Optional, List, Union
 import cv2
 import logging
-
+from coords_extractor import extract_attack_coordinates
 from base_attacks import AttackBase
 from config_validator import ConfigValidator
 
