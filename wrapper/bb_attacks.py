@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Tuple, Optional, List
+from typing import Any, Dict, Tuple, Optional, List, Union
 import cv2
 import logging
 
@@ -130,56 +130,125 @@ class BlackBoxAttacks(AttackBase):
     def patch_attack(
         self,
         image: np.ndarray,
-        patch_size: Optional[int] = None,
-        patch_color: Optional[Tuple] = None,
-        patch_coordinates: Optional[Tuple[int, int]] = None
-    ) -> np.ndarray:
+        patch_size: Optional[Union[int, str]] = None,      # int, "auto", или None
+        patch_color: Optional[Tuple[int, int, int]] = None,
+        patch_coordinates: Optional[Union[Tuple[int, int], List[Dict[str, Any]]]] = None,
+        detection_result: Optional[Dict[str, Any]] = None,  # 🔍 YOLO-результаты
+        target_class: Optional[Union[str, List[str]]] = None, # 🔍 Класс для атаки
+        patch_strategy: str = "center",                    # стратегия выбора координат
+        patch_size_ratio: float = 0.15,                    # для patch_size="auto"
+        return_metadata: bool = False                      # вернуть инфо о применённом патче
+    ) -> Union[np.ndarray, Tuple[np.ndarray, Dict[str, Any]]]:
         """
-        Apply colored patch to random location.
+        Apply adversarial patch with optional object targeting via YOLO detection.
         
         Args:
-            image: Input image array
-            patch_size: Size of patch
-            patch_color: RGB color tuple
-            patch_coordinates: Optional (x, y) coordinates for patch placement
+            image: Input image [H, W, C]
+            patch_size: 
+                - int: фиксированный размер в пикселях
+                - "auto": размер вычисляется от bbox (если передан detection_result)
+                - None: берётся из конфига
+            patch_color: RGB цвет, напр. (255, 0, 0)
+            patch_coordinates:
+                - Tuple[int, int]: явные координаты (x, y)
+                - List[Dict]: результат extract_attack_coordinates(return_patch_info=True)
+            detection_result: JSON с детекцией YOLO (опционально)
+            target_class: Фильтр по классу для атаки (напр. "cell phone")
+            patch_strategy: "center", "random", "corners", "grid" — как выбирать точку внутри bbox
+            patch_size_ratio: Доля от bbox для auto-размера
+            return_metadata: Если True — возвращает (image, metadata)
             
         Returns:
-            Image with adversarial patch
+            np.ndarray или Tuple[np.ndarray, Dict] с метаданными патча
         """
         self.validate_image(image)
+        h, w = image.shape[:2]
         
+        # 🎨 Загрузка параметров по умолчанию
         if patch_size is None or patch_color is None:
-            patch_config = self.get_config_param(
-                'black_box_attacks',
-                'patch',
-                None,
-                {}
-            ) if isinstance(self.config.get('black_box_attacks', {}).get('patch', {}), dict) else {}
+            patch_config = self.config.get('black_box_attacks', {}).get('patch', {})
+            if not isinstance(patch_config, dict):
+                patch_config = {}
             
-            patch_size = (
-                patch_size or
-                self.get_config_param('black_box_attacks', 'patch', 'patch_size', 32)
-            )
-            patch_color_list = self.get_config_param(
-                'black_box_attacks',
-                'patch',
-                'patch_color',
-                [255, 0, 0]
-            )
+            patch_size = patch_size or patch_config.get('patch_size', 32)
+            patch_color_list = patch_config.get('patch_color', [255, 0, 0])
             patch_color = tuple(patch_color_list) if patch_color is None else patch_color
         
-        self.log_attack('patch_attack', patch_size=patch_size, patch_color=patch_color)
-        adversarial = image.copy()
-        h, w = image.shape[:2]
-        if patch_coordinates is not None:
-            x, y = patch_coordinates
-        else:
-            y = np.random.randint(0, max(1, h - patch_size))
-            x = np.random.randint(0, max(1, w - patch_size))
-        y_end = min(y + patch_size, h)
-        x_end = min(x + patch_size, w)
+        # 🎯 Обработка координат и размеров
+        patch_placements = []  # список {x, y, size}
         
-        adversarial[y:y_end, x:x_end] = patch_color
+        if patch_coordinates is not None and isinstance(patch_coordinates, list) and len(patch_coordinates) > 0:
+            # 📥 Получили список из extract_attack_coordinates(return_patch_info=True)
+            for item in patch_coordinates:
+                if isinstance(item, dict) and "x" in item and "y" in item:
+                    size = item.get("size", patch_size if isinstance(patch_size, int) else 32)
+                    patch_placements.append({
+                        "x": item["x"],
+                        "y": item["y"],
+                        "size": size
+                    })
+        
+        elif patch_coordinates is not None and isinstance(patch_coordinates, tuple):
+            # 📍 Явные координаты
+            x, y = patch_coordinates
+            size = patch_size if isinstance(patch_size, int) else 32
+            patch_placements.append({"x": x, "y": y, "size": size})
+        
+        elif detection_result is not None and target_class is not None:
+            # 🔍 Авто-извлечение из детекции
+            coords_info = extract_attack_coordinates(
+                detection_result=detection_result,
+                strategy=patch_strategy,
+                target_class=target_class,
+                return_patch_info=True,
+                patch_size_mode="ratio" if patch_size == "auto" else "fixed",
+                patch_size_value=patch_size_ratio if patch_size == "auto" else (patch_size if isinstance(patch_size, int) else 32)
+            )
+            for info in coords_info:
+                patch_placements.append({
+                    "x": info["x"],
+                    "y": info["y"],
+                    "size": info["size"]
+                })
+        
+        else:
+            # 🎲 Случайное размещение (старое поведение)
+            size = patch_size if isinstance(patch_size, int) else 32
+            y_start = np.random.randint(0, max(1, h - size))
+            x_start = np.random.randint(0, max(1, w - size))
+            patch_placements.append({"x": x_start, "y": y_start, "size": size})
+        
+        # 🖌️ Применение патчей
+        adversarial = image.copy()
+        applied_patches = []
+        
+        for placement in patch_placements:
+            x, y, size = placement["x"], placement["y"], placement["size"]
+            
+            # Корректировка границ
+            x_start = max(0, min(x, w - 1))
+            y_start = max(0, min(y, h - 1))
+            x_end = min(x_start + size, w)
+            y_end = min(y_start + size, h)
+            
+            # Применение цвета
+            adversarial[y_start:y_end, x_start:x_end] = patch_color
+            
+            applied_patches.append({
+                "top_left": (x_start, y_start),
+                "bottom_right": (x_end, y_end),
+                "size": size,
+                "color": patch_color
+            })
+        
+        self.log_attack('patch_attack', 
+                    patches_applied=len(applied_patches),
+                    patch_color=patch_color,
+                    target_class=target_class)
+        
+        if return_metadata:
+            return adversarial, {"patches": applied_patches, "image_shape": (h, w)}
+        
         return adversarial
     
     def brightness_attack(
