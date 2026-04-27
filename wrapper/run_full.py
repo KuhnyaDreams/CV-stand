@@ -2,7 +2,7 @@
 import sys
 import argparse
 from pathlib import Path
-from attacks import load_config
+from config import load_config
 from attack_eval import AttackEvaluator
 import json
 
@@ -172,8 +172,8 @@ Examples:
     
     parser.add_argument(
         '--output', '-o',
-        default='results/attack_results',
-        help='Output directory for results (default: results/attack_results)'
+        default='/results/attack_results',
+        help='Output directory for results (default: /results/attack_results)'
     )
     
     parser.add_argument(
