@@ -52,3 +52,22 @@ def segment(input_path, class_names = None, save_images = True):
 def classify(input_path, save_images = True):
     """Классификация изображения/папки."""
     return _call_core('classify', input_path, None, save_images)
+
+def analyze_video_phone(video_path: str, frame_interval: int = 1, conf_thres: float = 0.25, iou_threshold: float = 0.2):
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    path = Path(video_path)
+    name = path.stem
+    output_path = f"/results/video_analysis/{timestamp}-{name}"
+    params = {
+        "video_path": f"/data/{video_path}",
+        "output_path": output_path,
+        "frame_interval": frame_interval,
+        "conf_thres": conf_thres,
+        "iou_threshold": iou_threshold
+    }
+    response = requests.post(f"{CORE_URL}/analyze_video", json=params)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Ошибка анализа видео: {response.status_code}")
+        return None
