@@ -22,7 +22,8 @@ class AttackClassifier:
             return "blur"
 
         # патч
-        if edge_sum > 1e6:
+        edge_ratio = np.count_nonzero(edges) / edges.size
+        if edge_ratio > 0.18:
             return "patch"
         
         diff = np.abs(image.astype(np.int32) - cv2.medianBlur(image, 3).astype(np.int32))

@@ -8,26 +8,17 @@ dPipeline = AdaptiveDefense()
 
 def run_attack_and_defense(image_path: str, attack_type: str = None):
     image = cv2.imread(image_path)
+
     if image is None:
-        cwd = os.getcwd()
-        raise FileNotFoundError(
-            f"Cannot load image: {image_path}. cv2.imread returned None. Current working dir: {cwd}"
-        )
+        raise FileNotFoundError(image_path)
 
-
+    # если вручную указали тип атаки
     if attack_type:
         defended_image = dPipeline.apply_with_type(image, attack_type)
-    else:
-        attack_type = dPipeline.detect_attack(image)
-        print(f"[INFO] Detected attack: {attack_type}")
-        defended_image = dPipeline.apply_with_type(image, attack_type)
 
-    """if attack_type is None:
-        attack_type = "patch" 
-        print(f"[INFO] No attack type specified, using default: {attack_type}")
-    
-    # Применяем защиту
-    defended_image = dPipeline.apply_with_type(image, attack_type)"""
+    # если нет — автоматически определить
+    else:
+        defended_image = dPipeline.apply(image)
 
     import time
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -47,9 +38,16 @@ def run_attack_and_defense(image_path: str, attack_type: str = None):
 
 
 run_attack_and_defense(
-    "../results/photo.jpg"
+    "../results/photo2.jpg"
 )
 
-run_attack_and_defense(
-    "../results/photo.jpg"
-)
+
+
+
+
+"""if attack_type is None:
+        attack_type = "patch" 
+        print(f"[INFO] No attack type specified, using default: {attack_type}")
+    
+    # Применяем защиту
+    defended_image = dPipeline.apply_with_type(image, attack_type)"""
