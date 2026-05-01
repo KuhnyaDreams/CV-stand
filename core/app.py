@@ -3,8 +3,9 @@ import os
 import uvicorn
 from fastapi import FastAPI, HTTPException, Body
 from yolo_model import YOLOModel
-from schemas import DetectRequest, EstimateRequest, SegmentRequest, PredictRequest, ClassifyRequest
-from utils import create_report, keypoint_names
+from schemas import DetectRequest, EstimateRequest, SegmentRequest, PredictRequest, ClassifyRequest, VideoAnalysisRequest
+from utils import create_report, keypoint_names, create_video_report, process_frame
+import cv2
 
 app = FastAPI(title="YOLO26 CV Core", description="Ядро компьютерного зрения на YOLO26")
 detector = YOLOModel(model_path="yolo26x.pt", task='detect')
@@ -132,6 +133,45 @@ async def segment_objects(request: ClassifyRequest = Body(...)):
         save_images=request.save_images,
     )
     return await predict(pred_req)
+
+@app.post("/analyze_video")
+async def analyze_video(request: VideoAnalysisRequest = Body(...)):
+    full_video_path = request.video_path
+    if not os.path.exists(full_video_path):
+        raise HTTPException(404, f"Video not found: {full_video_path}")
+
+    cap = cv2.VideoCapture(full_video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    duration = total_frames / fps if fps > 0 else 0
+    cap.release()
+
+    frame_idx = 0
+    phone_present_frames = []
+
+    results_gen = detector.model.predict(
+        source=full_video_path,
+        stream=True,
+        vid_stride = request.frame_interval,
+        conf=request.conf_thres,
+        save=False,
+        verbose=False
+    )
+
+    for result in results_gen:
+        ts, conf = process_frame(result, frame_idx, fps,
+                                 phi=0.2, iou_thresh=0.15)
+        if ts is not None:
+            phone_present_frames.append((ts, conf))
+        frame_idx += request.frame_interval
+
+    report = create_video_report(
+        request=request,
+        total_frames_processed=frame_idx,
+        duration=duration,
+        phone_present_frames=phone_present_frames
+    )
+    return report
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
