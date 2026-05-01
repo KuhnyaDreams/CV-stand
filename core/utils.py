@@ -1,6 +1,7 @@
 import datetime
 import os
 from typing import Any, List
+import json
 
 keypoint_names = {
     0: 'nose',
@@ -110,3 +111,58 @@ def compute_iou(box1, box2):
     area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
     union = area1 + area2 - inter
     return inter / union if union > 0 else 0
+
+def create_video_report(video_path,
+                        total_frames_processed,
+                        duration,
+                        phone_present_frames,
+                        gap_seconds,
+                        output_path):
+    intervals = []
+    if phone_present_frames:
+        start_t = phone_present_frames[0][0]
+        end_t = phone_present_frames[0][0]
+        confs = [phone_present_frames[0][1]]
+        for i in range(1, len(phone_present_frames)):
+            gap = phone_present_frames[i][0] - phone_present_frames[i-1][0]
+            if gap <= gap_seconds:
+                end_t = phone_present_frames[i][0]
+                confs.append(phone_present_frames[i][1])
+            else:
+                intervals.append({
+                    "start_time": round(start_t, 2),
+                    "end_time": round(end_t, 2),
+                    "avg_phone_confidence": round(sum(confs)/len(confs), 3),
+                    "max_phone_confidence": round(max(confs), 3),
+                    "frame_count": len(confs)
+                })
+                start_t = phone_present_frames[i][0]
+                end_t = phone_present_frames[i][0]
+                confs = [phone_present_frames[i][1]]
+        intervals.append({
+            "start_time": round(start_t, 2),
+            "end_time": round(end_t, 2),
+            "avg_phone_confidence": round(sum(confs)/len(confs), 3),
+            "max_phone_confidence": round(max(confs), 3),
+            "frame_count": len(confs)
+        })
+
+    total_time = sum(i["end_time"] - i["start_time"] for i in intervals)
+    detection_ratio = total_time / duration if duration > 0 else 0
+
+    report = {
+        "video_path": video_path,
+        "total_frames_processed": total_frames_processed,
+        "duration_seconds": duration,
+        "intervals": intervals,
+        "total_time_with_phone": total_time,
+        "detection_ratio": detection_ratio
+    }
+
+    if output_path:
+        os.makedirs(output_path, exist_ok=True)
+        json_path = os.path.join(output_path, "phone_analysis.json")
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+
+    return report

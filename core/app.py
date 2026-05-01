@@ -3,8 +3,8 @@ import os
 import uvicorn
 from fastapi import FastAPI, HTTPException, Body
 from yolo_model import YOLOModel
-from schemas import DetectRequest, EstimateRequest, SegmentRequest, PredictRequest, ClassifyRequest, VideoAnalysisRequest, VideoAnalysisResponse, PhoneWithPersonInterval
-from utils import create_report, keypoint_names, compute_iou
+from schemas import DetectRequest, EstimateRequest, SegmentRequest, PredictRequest, ClassifyRequest, VideoAnalysisRequest
+from utils import create_report, keypoint_names, compute_iou, create_video_report
 import cv2
 
 app = FastAPI(title="YOLO26 CV Core", description="Ядро компьютерного зрения на YOLO26")
@@ -134,7 +134,7 @@ async def segment_objects(request: ClassifyRequest = Body(...)):
     )
     return await predict(pred_req)
 
-@app.post("/analyze_video", response_model=VideoAnalysisResponse)
+@app.post("/analyze_video")
 async def analyze_video(request: VideoAnalysisRequest = Body(...)):
     full_video_path = request.video_path
     if not os.path.exists(full_video_path):
@@ -153,117 +153,68 @@ async def analyze_video(request: VideoAnalysisRequest = Body(...)):
     results_gen = model.predict(
         source=full_video_path,
         stream=True,
+        vid_stride = request.frame_interval,
         conf=request.conf_thres,
         save=False,
         verbose=False
     )
 
     for result in results_gen:
-        if frame_idx % request.frame_interval != 0:
-            frame_idx += 1
-            continue
-
         timestamp = frame_idx / fps if fps > 0 else 0
+
         boxes = result.boxes
-        if boxes is None:
-            frame_idx += 1
-            continue
+        if boxes is not None:
+            persons = []
+            phones = []
+            for box in boxes:
+                cls = int(box.cls[0])
+                conf = float(box.conf[0])
+                xyxy = box.xyxy[0].tolist()
+                if cls == 0:
+                    persons.append(xyxy)
+                elif cls == 67:
+                    phones.append((xyxy, conf))
 
-        persons = []
-        phones = []
-        for box in boxes:
-            cls = int(box.cls[0])
-            conf = float(box.conf[0])
-            xyxy = box.xyxy[0].tolist()
-            if cls == 0:
-                persons.append(xyxy)
-            elif cls == 67:
-                phones.append((xyxy, conf))
-
-
-        phi = 0.2
-        iou_thresh = 0.15
-        phone_belongs = False
-        max_phone_conf = 0
-        for (phone_box, phone_conf) in phones:
-            phone_center = ((phone_box[0]+phone_box[2])/2, (phone_box[1]+phone_box[3])/2)
-            for person_box in persons:
-                w = person_box[2] - person_box[0]
-                h = person_box[3] - person_box[1]
-                expanded = [
-                    person_box[0] - phi*w,
-                    person_box[1] - phi*h,
-                    person_box[2] + phi*w,
-                    person_box[3] + phi*h
-                ]
-                inside_expanded = (expanded[0] <= phone_center[0] <= expanded[2] and
-                           expanded[1] <= phone_center[1] <= expanded[3])
-                iou = compute_iou(phone_box, person_box)
-                if inside_expanded or iou >= iou_thresh:
-                    phone_belongs = True
-                    max_phone_conf = max(max_phone_conf, phone_conf)
+            phi = 0.2
+            iou_thresh = 0.15
+            phone_belongs = False
+            max_phone_conf = 0
+            for (phone_box, phone_conf) in phones:
+                phone_center = ((phone_box[0]+phone_box[2])/2, (phone_box[1]+phone_box[3])/2)
+                for person_box in persons:
+                    w = person_box[2] - person_box[0]
+                    h = person_box[3] - person_box[1]
+                    expanded = [
+                        person_box[0] - phi*w,
+                        person_box[1] - phi*h,
+                        person_box[2] + phi*w,
+                        person_box[3] + phi*h
+                    ]
+                    inside_expanded = (expanded[0] <= phone_center[0] <= expanded[2] and
+                            expanded[1] <= phone_center[1] <= expanded[3])
+                    iou = compute_iou(phone_box, person_box)
+                    if inside_expanded or iou >= iou_thresh:
+                        phone_belongs = True
+                        max_phone_conf = max(max_phone_conf, phone_conf)
+                        break
+                if phone_belongs:
                     break
+
             if phone_belongs:
-                break
+                phone_present_frames.append((timestamp, max_phone_conf))
 
-        if phone_belongs:
-            phone_present_frames.append((timestamp, max_phone_conf))
+        frame_idx += request.frame_interval
 
-        frame_idx += 1
-
-    intervals = []
-    if phone_present_frames:
-        start_t = phone_present_frames[0][0]
-        end_t = phone_present_frames[0][0]
-        confs = [phone_present_frames[0][1]]
-        for i in range(1, len(phone_present_frames)):
-            gap = phone_present_frames[i][0] - phone_present_frames[i-1][0]
-            if gap <= request.gap_seconds:
-                end_t = phone_present_frames[i][0]
-                confs.append(phone_present_frames[i][1])
-            else:
-                intervals.append({
-                    "start_time": round(start_t, 2),
-                    "end_time": round(end_t, 2),
-                    "avg_phone_confidence": round(sum(confs)/len(confs), 3),
-                    "max_phone_confidence": round(max(confs), 3),
-                    "frame_count": len(confs)
-                })
-                start_t = phone_present_frames[i][0]
-                end_t = phone_present_frames[i][0]
-                confs = [phone_present_frames[i][1]]
-        intervals.append({
-            "start_time": round(start_t, 2),
-            "end_time": round(end_t, 2),
-            "avg_phone_confidence": round(sum(confs)/len(confs), 3),
-            "max_phone_confidence": round(max(confs), 3),
-            "frame_count": len(confs)
-        })
-
-    total_time = sum(i["end_time"] - i["start_time"] for i in intervals)
-    detection_ratio = total_time / duration if duration > 0 else 0
-
-    if request.output_path:
-        os.makedirs(request.output_path, exist_ok=True)
-        report = {
-            "video_path": request.video_path,
-            "total_frames_processed": frame_idx,
-            "duration_seconds": duration,
-            "intervals": intervals,
-            "total_time_with_phone": total_time,
-            "detection_ratio": detection_ratio
-        }
-        with open(os.path.join(request.output_path, "phone_analysis.json"), "w") as f:
-            json.dump(report, f, indent=2)
-
-    return VideoAnalysisResponse(
+    report = create_video_report(
         video_path=request.video_path,
         total_frames_processed=frame_idx,
-        duration_seconds=duration,
-        intervals=intervals,
-        total_time_with_phone=total_time,
-        detection_ratio=detection_ratio
+        duration=duration,
+        phone_present_frames=phone_present_frames,
+        gap_seconds=request.gap_seconds,
+        output_path=request.output_path
     )
+
+    return report
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

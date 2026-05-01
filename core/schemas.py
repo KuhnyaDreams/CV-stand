@@ -32,18 +32,3 @@ class VideoAnalysisRequest(BaseModel):
     frame_interval: int = 1
     iou_threshold: float = 0.2
     gap_seconds: float = 0.5
-
-class PhoneWithPersonInterval(BaseModel):
-    start_time: float
-    end_time: float
-    avg_phone_confidence: float
-    max_phone_confidence: float
-    frame_count: int
-
-class VideoAnalysisResponse(BaseModel):
-    video_path: str
-    total_frames_processed: int
-    duration_seconds: float
-    intervals: List[PhoneWithPersonInterval]
-    total_time_with_phone: float
-    detection_ratio: float
