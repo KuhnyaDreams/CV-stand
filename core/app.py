@@ -4,7 +4,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Body
 from yolo_model import YOLOModel
 from schemas import DetectRequest, EstimateRequest, SegmentRequest, PredictRequest, ClassifyRequest, VideoAnalysisRequest
-from utils import create_report, keypoint_names, compute_iou, create_video_report
+from utils import create_report, keypoint_names, create_video_report, process_frame
 import cv2
 
 app = FastAPI(title="YOLO26 CV Core", description="Ядро компьютерного зрения на YOLO26")
@@ -146,11 +146,10 @@ async def analyze_video(request: VideoAnalysisRequest = Body(...)):
     duration = total_frames / fps if fps > 0 else 0
     cap.release()
 
-    model = detector.model
     frame_idx = 0
     phone_present_frames = []
 
-    results_gen = model.predict(
+    results_gen = detector.model.predict(
         source=full_video_path,
         stream=True,
         vid_stride = request.frame_interval,
@@ -160,60 +159,18 @@ async def analyze_video(request: VideoAnalysisRequest = Body(...)):
     )
 
     for result in results_gen:
-        timestamp = frame_idx / fps if fps > 0 else 0
-
-        boxes = result.boxes
-        if boxes is not None:
-            persons = []
-            phones = []
-            for box in boxes:
-                cls = int(box.cls[0])
-                conf = float(box.conf[0])
-                xyxy = box.xyxy[0].tolist()
-                if cls == 0:
-                    persons.append(xyxy)
-                elif cls == 67:
-                    phones.append((xyxy, conf))
-
-            phi = 0.2
-            iou_thresh = 0.15
-            phone_belongs = False
-            max_phone_conf = 0
-            for (phone_box, phone_conf) in phones:
-                phone_center = ((phone_box[0]+phone_box[2])/2, (phone_box[1]+phone_box[3])/2)
-                for person_box in persons:
-                    w = person_box[2] - person_box[0]
-                    h = person_box[3] - person_box[1]
-                    expanded = [
-                        person_box[0] - phi*w,
-                        person_box[1] - phi*h,
-                        person_box[2] + phi*w,
-                        person_box[3] + phi*h
-                    ]
-                    inside_expanded = (expanded[0] <= phone_center[0] <= expanded[2] and
-                            expanded[1] <= phone_center[1] <= expanded[3])
-                    iou = compute_iou(phone_box, person_box)
-                    if inside_expanded or iou >= iou_thresh:
-                        phone_belongs = True
-                        max_phone_conf = max(max_phone_conf, phone_conf)
-                        break
-                if phone_belongs:
-                    break
-
-            if phone_belongs:
-                phone_present_frames.append((timestamp, max_phone_conf))
-
+        ts, conf = process_frame(result, frame_idx, fps,
+                                 phi=0.2, iou_thresh=0.15)
+        if ts is not None:
+            phone_present_frames.append((ts, conf))
         frame_idx += request.frame_interval
 
     report = create_video_report(
-        video_path=request.video_path,
+        request=request,
         total_frames_processed=frame_idx,
         duration=duration,
-        phone_present_frames=phone_present_frames,
-        gap_seconds=request.gap_seconds,
-        output_path=request.output_path
+        phone_present_frames=phone_present_frames
     )
-
     return report
 
 if __name__ == "__main__":

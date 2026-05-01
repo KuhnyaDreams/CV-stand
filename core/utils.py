@@ -112,13 +112,16 @@ def compute_iou(box1, box2):
     union = area1 + area2 - inter
     return inter / union if union > 0 else 0
 
-def create_video_report(video_path,
+def create_video_report(request,
                         total_frames_processed,
                         duration,
-                        phone_present_frames,
-                        gap_seconds,
-                        output_path):
+                        phone_present_frames):
+    
+    gap_seconds = request.gap_seconds
+    output_path=request.output_path
+    video_path=request.video_path
     intervals = []
+    
     if phone_present_frames:
         start_t = phone_present_frames[0][0]
         end_t = phone_present_frames[0][0]
@@ -166,3 +169,42 @@ def create_video_report(video_path,
             json.dump(report, f, indent=2)
 
     return report
+
+def process_frame(result, frame_idx: int, fps: float, phi: float = 0.2, iou_thresh: float = 0.15):
+    timestamp = frame_idx / fps if fps > 0 else 0
+    boxes = result.boxes
+    if boxes is None:
+        return None, None
+
+    persons = []
+    phones = []
+    for box in boxes:
+        cls = int(box.cls[0])
+        conf = float(box.conf[0])
+        xyxy = box.xyxy[0].tolist()
+        if cls == 0:
+            persons.append(xyxy)
+        elif cls == 67: 
+            phones.append((xyxy, conf))
+
+    if not persons or not phones:
+        return None, None
+
+    for (phone_box, phone_conf) in phones:
+        phone_center = ((phone_box[0] + phone_box[2]) / 2,
+                        (phone_box[1] + phone_box[3]) / 2)
+        for person_box in persons:
+            w = person_box[2] - person_box[0]
+            h = person_box[3] - person_box[1]
+            expanded = [
+                person_box[0] - phi * w,
+                person_box[1] - phi * h,
+                person_box[2] + phi * w,
+                person_box[3] + phi * h
+            ]
+            inside_expanded = (expanded[0] <= phone_center[0] <= expanded[2] and
+                               expanded[1] <= phone_center[1] <= expanded[3])
+            iou = compute_iou(phone_box, person_box)
+            if inside_expanded or iou >= iou_thresh:
+                return timestamp, max(phone_conf, 0)
+    return None, None
