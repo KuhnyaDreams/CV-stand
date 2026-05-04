@@ -7,7 +7,6 @@ services:
     volumes:
       - ./data:/data
       - ./results:/results
-      - ./core:/app
     environment:
       - PYTHONUNBUFFERED=1
     networks:
@@ -23,7 +22,7 @@ services:
       - ./results:/home/jovyan/results
       - ./wrapper/scripts:/home/jovyan/scripts
     environment:
-      - CORE_URL=http://core:8000
+      - CORE_URL=http://localhost:8000
     depends_on:
       - core
     networks:

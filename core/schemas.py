@@ -24,3 +24,11 @@ class SegmentRequest(PredictRequest):
 
 class ClassifyRequest(PredictRequest):
     task: str = 'classify'
+
+class VideoAnalysisRequest(BaseModel):
+    video_path: str
+    output_path: Optional[str] = None
+    conf_thres: float = 0.25
+    frame_interval: int = 1
+    iou_threshold: float = 0.2
+    gap_seconds: float = 0.5
