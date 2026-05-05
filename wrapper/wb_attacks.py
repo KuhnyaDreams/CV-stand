@@ -1,46 +1,55 @@
 import numpy as np
-from typing import Optional
+from typing import Optional,  Union, Tuple
 import logging
-
 from base_attacks import AttackBase
-
+import tensorflow as tf
+import matplotlib.pyplot as plt
 logger = logging.getLogger(__name__)
 
 
 class WhiteBoxAttacks(AttackBase):
     """White-box adversarial attack implementations."""
     
-    def fgsm_attack(
-        self,
-        image: np.ndarray,
-        epsilon: Optional[float] = None
-    ) -> np.ndarray:
+    
+
+
+    def fgsm_attack(model, images, labels, epsilon=0.1):
         """
-        Fast Gradient Sign Method attack.
+        Generate FGSM adversarial examples
         
         Args:
-            image: Input image array
-            epsilon: Attack strength (perturbation magnitude)
-            
+            model: TensorFlow/Keras model
+            images: Input images tensor
+            labels: True labels tensor
+            epsilon: Perturbation magnitude
+        
         Returns:
-            Adversarial image
+            adversarial_images: Perturbed images
         """
-        self.validate_image(image)
         
-        if epsilon is None:
-            epsilon = self.get_config_param(
-                'white_box_attacks',
-                'fgsm',
-                'epsilon',
-                0.03
-            )
+        # Convert to tensor if numpy array
+        images = tf.convert_to_tensor(images, dtype=tf.float32)
+        labels = tf.convert_to_tensor(labels)
         
-        self.log_attack('fgsm_attack', epsilon=epsilon)
-        image_normalized = self.normalize_to_unit(image)
-        noise = np.random.randn(*image.shape) * epsilon
-        adversarial = image_normalized + noise
-        adversarial = self.clip_image(adversarial)
-        return self.denormalize_to_uint8(adversarial)
+        # Record gradients
+        with tf.GradientTape() as tape:
+            tape.watch(images)
+            predictions = model(images)
+            loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
+        
+        # Calculate gradients
+        gradients = tape.gradient(loss, images)
+        
+        # Generate adversarial examples
+        signed_gradients = tf.sign(gradients)
+        adversarial_images = images + epsilon * signed_gradients
+        
+        # Clip to valid pixel range [0, 1]
+        adversarial_images = tf.clip_by_value(adversarial_images, 0, 1)
+        
+        return adversarial_images
+
+
     
     def pgd_attack(
         self,
