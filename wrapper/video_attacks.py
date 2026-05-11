@@ -159,6 +159,11 @@ class VideoBlackBoxAttacks:
         patch_position: str = "random",
         patch_x: int | None = None,
         patch_y: int | None = None,
+        patch_alpha: float = 1.0,
+        patch_texture: str = "solid",
+        texture_strength: float = 0.15,
+        edge_softness: float = 0.0,
+        patch_shape: str = "square",
     ) -> Path:
         """
         Накладывает patch на каждый кадр видео.
@@ -175,6 +180,11 @@ class VideoBlackBoxAttacks:
                 attack_func=self.image_attacks.patch_attack,
                 patch_size=patch_size,
                 patch_color=patch_color,
+                patch_alpha=patch_alpha,
+                patch_texture=patch_texture,
+                texture_strength=texture_strength,
+                edge_softness=edge_softness,
+                patch_shape=patch_shape,
             )
 
         if patch_position == "fixed":
@@ -185,6 +195,11 @@ class VideoBlackBoxAttacks:
                 patch_color=patch_color,
                 patch_x=patch_x,
                 patch_y=patch_y,
+                patch_alpha=patch_alpha,
+                patch_texture=patch_texture,
+                texture_strength=texture_strength,
+                edge_softness=edge_softness,
+                patch_shape=patch_shape,
             )
 
         if patch_position == "person-centered":
@@ -202,6 +217,11 @@ class VideoBlackBoxAttacks:
         patch_color: tuple[int, int, int] | None = None,
         patch_x: int | None = None,
         patch_y: int | None = None,
+        patch_alpha: float = 1.0,
+        patch_texture: str = "solid",
+        texture_strength: float = 0.15,
+        edge_softness: float = 0.0,
+        patch_shape: str = "square",
     ) -> Path:
         """
         Накладывает один и тот же patch в одну и ту же позицию на каждый кадр.
@@ -215,8 +235,7 @@ class VideoBlackBoxAttacks:
 
         attacked_frames = []
         for frame in frames:
-            attacked_frame = frame.copy()
-            height, width = attacked_frame.shape[:2]
+            height, width = frame.shape[:2]
 
             # Если координаты не заданы, ставим patch в центр кадра.
             x = patch_x if patch_x is not None else max(0, (width - patch_size) // 2)
@@ -225,10 +244,17 @@ class VideoBlackBoxAttacks:
             # Ограничиваем координаты, чтобы patch не вышел за границы кадра.
             x = int(np.clip(x, 0, max(0, width - patch_size)))
             y = int(np.clip(y, 0, max(0, height - patch_size)))
-            x_end = min(x + patch_size, width)
-            y_end = min(y + patch_size, height)
-
-            attacked_frame[y:y_end, x:x_end] = patch_color
+            attacked_frame = self.image_attacks.patch_attack(
+                frame,
+                patch_size=patch_size,
+                patch_color=patch_color,
+                patch_coordinates=(x, y),
+                patch_alpha=patch_alpha,
+                patch_texture=patch_texture,
+                texture_strength=texture_strength,
+                edge_softness=edge_softness,
+                patch_shape=patch_shape,
+            )
             attacked_frames.append(attacked_frame)
 
         return write_video(
