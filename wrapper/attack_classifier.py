@@ -15,7 +15,11 @@ class AttackClassifier:
         laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
         
         # шум
-        if variance > 5000:
+        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+        noise_map = cv2.absdiff(gray, blurred)
+        noise_score = np.mean(noise_map)
+
+        if noise_score > 18 and variance > 800:
             return "noise"
         
         # размытие
@@ -25,7 +29,7 @@ class AttackClassifier:
         
         # патч
         edge_ratio = np.count_nonzero(edges) / edges.size
-        if edge_ratio > 0.12:  # ПОНИЖЕНО с 0.18 до 0.12
+        if edge_ratio > 0.12:  
             return "patch"
         
         _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)

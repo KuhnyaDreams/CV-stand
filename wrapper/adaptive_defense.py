@@ -9,7 +9,12 @@ class AdaptiveDefense:
     def apply_with_type(self, image, attack_type: str):
 
         if attack_type == "noise":
-            return Defenses.denoise(image)
+            return Defenses.denoise(
+                image,
+                h=18,
+                template_window_size=7,
+                search_window_size=21
+    )
 
         elif attack_type == "patch":
             return Defenses.jpeg_compression(image, quality=50)
