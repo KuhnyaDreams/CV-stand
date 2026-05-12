@@ -24,7 +24,36 @@ class AdaptiveDefense:
 
         elif attack_type == "single_pixel":
             return Defenses.gaussian_blur(image, kernel_size=3)
+        
+        elif attack_type == "rotation":
+            h, w = image.shape[:2]
+            center = (w // 2, h // 2)
 
+            matrix = cv2.getRotationMatrix2D(center, -15, 1.0)
+            return cv2.warpAffine(image, matrix, (w, h))
+
+
+        elif attack_type == "perspective":
+            h, w = image.shape[:2]
+
+            src = np.float32([
+                [20, 20],
+                [w - 20, 20],
+                [20, h - 20],
+                [w - 20, h - 20]
+            ])
+
+            dst = np.float32([
+                [0, 0],
+                [w, 0],
+                [0, h],
+                [w, h]
+            ])
+
+            matrix = cv2.getPerspectiveTransform(src, dst)
+
+            return cv2.warpPerspective(image, matrix, (w, h))
+        
         else:
             return Defenses.combined(image)
 

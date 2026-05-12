@@ -208,6 +208,244 @@ class VideoAttackEvaluator:
 
         return report
 
+    def run_bb_attack_defense(
+        self,
+        local_input_video_path: str,
+        attack_name: str,
+        attack_params: dict | None = None,
+        frame_interval: int = 1,
+        conf_thres: float = 0.25,
+        iou_threshold: float = 0.2,
+        frame_skip: int = 1
+    ) -> dict:
+        """
+        Run black-box attack on a video, then detect attack type and apply defense.
+        
+        Pipeline:
+        1. Apply attack to original video
+        2. Detect attack type on attacked video
+        3. Apply defense based on detected attack type
+        4. Analyze metrics for: original -> attacked -> defended
+        
+        Args:
+            local_input_video_path: path to original video
+            attack_name: name of attack to apply
+            attack_params: parameters for the attack
+            frame_interval: analyze every N-th frame
+            conf_thres: confidence threshold for detection
+            iou_threshold: IoU threshold for detection
+            frame_skip: process every N-th frame for defense (speed optimization)
+        
+        Returns:
+            dict: comprehensive report with all metrics
+        """
+        from adaptive_defense import AdaptiveDefense
+        from attack_classifier import AttackClassifier
+        from io_utils import read_video_frames, write_video
+        
+        attack_method = getattr(self.video_attacks, attack_name, None)
+        if attack_method is None:
+            raise ValueError(f"Unknown video attack: {attack_name}")
+        
+        attack_params = attack_params or {}
+        
+        # Paths
+        local_video_path = Path(local_input_video_path)
+        if not local_video_path.exists():
+            raise ValueError(f"Input video not found: {local_video_path}")
+        
+        core_input_video_name = local_video_path.name
+        
+        # 1. BASELINE: Analyze original video
+        print("=" * 60)
+        print("STEP 1: Analyzing baseline (original) video")
+        print("=" * 60)
+        
+        baseline_result = analyze_video_phone(
+            video_path=core_input_video_name,
+            frame_interval=frame_interval,
+            conf_thres=conf_thres,
+            iou_threshold=iou_threshold,
+        )
+        baseline_metrics = self._extract_analysis_metrics(baseline_result)
+        
+        # 2. ATTACK: Apply attack to video
+        print("\n" + "=" * 60)
+        print(f"STEP 2: Applying attack: {attack_name}")
+        print("=" * 60)
+        
+        temp_filename = make_temp_filename(
+            prefix=f"attack_{attack_name}",
+            suffix=local_video_path.suffix,
+        )
+        attacked_video_path = make_data_temp_path(temp_filename)
+        
+        attack_method(
+            input_video_path=str(local_video_path),
+            output_video_path=str(attacked_video_path),
+            **attack_params,
+        )
+        
+        # Analyze attacked video
+        attacked_result = analyze_video_phone(
+            video_path=attacked_video_path.name,
+            frame_interval=frame_interval,
+            conf_thres=conf_thres,
+            iou_threshold=iou_threshold,
+        )
+        attacked_metrics = self._extract_analysis_metrics(attacked_result)
+        
+        # 3. DETECT & DEFEND: Apply defense to attacked video
+        print("\n" + "=" * 60)
+        print("STEP 3: Detecting attack type and applying defense")
+        print("=" * 60)
+        
+        # Read attacked video frames
+        frames, info = read_video_frames(str(attacked_video_path), rgb=True)
+        
+        defender = AdaptiveDefense()
+        defense_stats = {
+            "total_frames": len(frames),
+            "processed_frames": 0,
+            "detections": {}  # динамический словарь
+        }
+        
+        defended_frames = []
+        
+        for idx, frame in enumerate(frames):
+            if idx % frame_skip == 0:
+                attack_type = AttackClassifier.classify(frame)
+                if attack_type not in defense_stats["detections"]:
+                    defense_stats["detections"][attack_type] = 0
+                defense_stats["detections"][attack_type] += 1
+                defense_stats["processed_frames"] += 1
+                defended_frame = defender.apply_with_type(frame, attack_type)
+                
+                if defense_stats["processed_frames"] % 10 == 0:
+                    print(f"Frame {defense_stats['processed_frames']}/{defense_stats['total_frames']} - Attack: {attack_type}")
+            else:
+                defended_frame = frame
+            
+            defended_frames.append(defended_frame)
+        
+        # Save defended video
+        defended_filename = make_temp_filename(
+            prefix=f"defended_{attack_name}",
+            suffix=local_video_path.suffix,
+        )
+        defended_video_path = make_data_temp_path(defended_filename)
+        
+        write_video(
+            path=str(defended_video_path),
+            frames=defended_frames,
+            fps=info["fps"],
+            width=info["width"],
+            height=info["height"],
+            rgb=True,
+        )
+        
+        # Analyze defended video
+        print("\n" + "=" * 60)
+        print("STEP 4: Analyzing defended video")
+        print("=" * 60)
+        
+        defended_result = analyze_video_phone(
+            video_path=defended_video_path.name,
+            frame_interval=frame_interval,
+            conf_thres=conf_thres,
+            iou_threshold=iou_threshold,
+        )
+        defended_metrics = self._extract_analysis_metrics(defended_result)
+        
+        # 4. BUILD REPORT
+        most_common_attack = max(defense_stats["detections"].items(), key=lambda x: x[1])
+        
+        report = {
+            "input_video": str(local_video_path),
+            "core_input_video_name": core_input_video_name,
+            "attack_name": attack_name,
+            "attack_params": attack_params,
+            "defense_params": {
+                "frame_skip": frame_skip,
+                "detected_attack_distribution": defense_stats["detections"],
+                "most_common_detected_attack": most_common_attack[0],
+            },
+            "analysis_params": {
+                "frame_interval": frame_interval,
+                "conf_thres": conf_thres,
+                "iou_threshold": iou_threshold,
+            },
+            "attacked_video_path": str(attacked_video_path),
+            "defended_video_path": str(defended_video_path),
+            
+            # Baseline metrics
+            "baseline": {
+                "interval_count": baseline_metrics["interval_count"],
+                "total_time_with_phone": baseline_metrics["total_time_with_phone"],
+                "detection_ratio": baseline_metrics["detection_ratio"],
+                "avg_phone_confidence": baseline_metrics["avg_phone_confidence"],
+                "total_frames_processed": baseline_metrics["total_frames_processed"],
+                "duration_seconds": baseline_metrics["duration_seconds"],
+            },
+            
+            # Attacked metrics
+            "attacked": {
+                "interval_count": attacked_metrics["interval_count"],
+                "total_time_with_phone": attacked_metrics["total_time_with_phone"],
+                "detection_ratio": attacked_metrics["detection_ratio"],
+                "avg_phone_confidence": attacked_metrics["avg_phone_confidence"],
+                "total_frames_processed": attacked_metrics["total_frames_processed"],
+                "duration_seconds": attacked_metrics["duration_seconds"],
+            },
+            
+            # Defended metrics
+            "defended": {
+                "interval_count": defended_metrics["interval_count"],
+                "total_time_with_phone": defended_metrics["total_time_with_phone"],
+                "detection_ratio": defended_metrics["detection_ratio"],
+                "avg_phone_confidence": defended_metrics["avg_phone_confidence"],
+                "total_frames_processed": defended_metrics["total_frames_processed"],
+                "duration_seconds": defended_metrics["duration_seconds"],
+            },
+            
+            # Deltas (improvements from defense)
+            "defense_improvement": {
+                "detection_ratio_restored": defended_metrics["detection_ratio"] - attacked_metrics["detection_ratio"],
+                "detection_ratio_vs_baseline": defended_metrics["detection_ratio"] - baseline_metrics["detection_ratio"],
+                "interval_count_restored": defended_metrics["interval_count"] - attacked_metrics["interval_count"],
+                "confidence_restored": defended_metrics["avg_phone_confidence"] - attacked_metrics["avg_phone_confidence"],
+            },
+            
+            # Success metrics
+            "attack_success": attacked_metrics["detection_ratio"] < baseline_metrics["detection_ratio"],
+            "defense_success": defended_metrics["detection_ratio"] > attacked_metrics["detection_ratio"],
+            "full_recovery": defended_metrics["detection_ratio"] >= baseline_metrics["detection_ratio"] * 0.9,
+            
+            # Raw results
+            "baseline_result": baseline_result,
+            "attacked_result": attacked_result,
+            "defended_result": defended_result,
+        }
+        
+        # Print summary
+        print("\n" + "=" * 60)
+        print("SUMMARY")
+        print("=" * 60)
+        print(f"Attack: {attack_name}")
+        print(f"Most detected attack type: {most_common_attack[0]} ({most_common_attack[1]} frames)")
+        print(f"\nDetection Ratio:")
+        print(f"  Baseline:  {baseline_metrics['detection_ratio']:.2%}")
+        print(f"  Attacked:  {attacked_metrics['detection_ratio']:.2%} (drop: {baseline_metrics['detection_ratio'] - attacked_metrics['detection_ratio']:.2%})")
+        print(f"  Defended:  {defended_metrics['detection_ratio']:.2%} (restored: {defended_metrics['detection_ratio'] - attacked_metrics['detection_ratio']:.2%})")
+        print(f"\nAttack successful: {report['attack_success']}")
+        print(f"Defense successful: {report['defense_success']}")
+        print(f"Full recovery: {report['full_recovery']}")
+        
+        report_path = self._save_report(report, output_dir="../results/video_defense_reports")
+        report["report_path"] = str(report_path)
+        
+        return report
+
     def run_multiple_blackbox_attacks(
         self,
         local_input_video_path: str,
@@ -435,6 +673,17 @@ if __name__ == "__main__":
         default=None,
         help="Contrast multiplier. Used only with contrast_attack. Example: --contrast-factor 0.5",
     )
+    parser.add_argument(
+        "--defend",
+        action="store_true",
+        help="Apply defense after attack and evaluate restoration metrics."
+    )
+    parser.add_argument(
+        "--frame-skip",
+        type=int,
+        default=1,
+        help="Process every N-th frame for defense (speed optimization). Example: --frame-skip 2"
+    )
 
     args = parser.parse_args()
 
@@ -474,7 +723,16 @@ if __name__ == "__main__":
 
     evaluator = VideoAttackEvaluator()
 
-    if args.all:
+    if args.defend:
+        report = evaluator.run_bb_attack_defense(
+            local_input_video_path=args.video,
+            attack_name=args.attack,
+            attack_params=attack_params,
+            frame_interval=args.frame_interval,
+            frame_skip=args.frame_skip,
+    )
+
+    elif args.all:
         report = evaluator.run_multiple_blackbox_attacks(
             local_input_video_path=args.video,
             attack_names=[
