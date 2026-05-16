@@ -249,3 +249,55 @@ def write_video(
         writer.release()
 
     return output_path
+
+
+def extract_video_frames_to_images(
+    video_path: str | Path,
+    output_dir: str | Path,
+    every_n_frames: int = 10,
+    max_frames: int | None = None,
+    prefix: str | None = None,
+    rgb: bool = True,
+) -> list[Path]:
+    """
+    Read frames from a video and save a subset of them as image files.
+
+    This reuses read_video_frames(...) so the training-data preparation flow
+    stays consistent with the rest of the project.
+
+    Args:
+        video_path: Path to input video
+        output_dir: Directory where extracted frames should be saved
+        every_n_frames: Save every N-th frame
+        max_frames: Optional hard limit on how many images to save
+        prefix: Optional filename prefix. Defaults to video stem.
+        rgb: Whether read_video_frames should return RGB frames
+
+    Returns:
+        List of saved image paths
+    """
+    if every_n_frames <= 0:
+        raise ValueError("every_n_frames must be greater than 0")
+
+    frames, _ = read_video_frames(video_path, rgb=rgb)
+    output_dir = ensure_dir(output_dir)
+
+    video_name = Path(video_path).stem
+    frame_prefix = prefix or video_name
+
+    saved_paths: list[Path] = []
+    saved_count = 0
+
+    for frame_idx, frame in enumerate(frames):
+        if frame_idx % every_n_frames != 0:
+            continue
+
+        if max_frames is not None and saved_count >= max_frames:
+            break
+
+        output_path = output_dir / f"{frame_prefix}_frame_{frame_idx:06d}.png"
+        save_image(output_path, frame, rgb=rgb)
+        saved_paths.append(output_path)
+        saved_count += 1
+
+    return saved_paths
