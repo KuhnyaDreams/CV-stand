@@ -89,5 +89,5 @@ def run_attack_and_defense(image_path: str, attack_name: str = "patch"):
 
 run_attack_and_defense(
     "results/photo2.jpg",
-    attack_name="brightness"
+    attack_name="perspective"
 )
