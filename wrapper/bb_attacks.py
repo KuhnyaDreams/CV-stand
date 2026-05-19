@@ -11,6 +11,76 @@ logger = logging.getLogger(__name__)
 
 class BlackBoxAttacks(AttackBase):
     """Black-box adversarial attack implementations."""
+
+    def _build_patch_texture(
+        self,
+        base_color: Tuple[int, int, int],
+        size: int,
+        texture_mode: str = "solid",
+        texture_strength: float = 0.15,
+    ) -> np.ndarray:
+        """
+        Build a patch texture that can look less artificial than a flat color block.
+        """
+        patch = np.full((size, size, 3), base_color, dtype=np.float32)
+
+        if texture_mode == "solid":
+            return patch
+
+        if texture_mode == "noise":
+            noise = np.random.normal(0, texture_strength * 255, patch.shape)
+            return np.clip(patch + noise, 0, 255)
+
+        if texture_mode == "camouflage":
+            coarse_size = max(2, size // 8)
+            coarse_noise = np.random.normal(
+                0,
+                texture_strength * 255,
+                (coarse_size, coarse_size, 3),
+            ).astype(np.float32)
+            resized_noise = cv2.resize(
+                coarse_noise,
+                (size, size),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            return np.clip(patch + resized_noise, 0, 255)
+
+        raise ValueError(f"Unknown texture_mode: {texture_mode}")
+
+    def _build_patch_mask(
+        self,
+        size: int,
+        alpha: float = 1.0,
+        edge_softness: float = 0.0,
+        shape: str = "square",
+    ) -> np.ndarray:
+        """
+        Build an alpha mask so the patch can be semi-transparent and have soft edges.
+        """
+        alpha = float(np.clip(alpha, 0.0, 1.0))
+        edge_softness = float(np.clip(edge_softness, 0.0, 0.45))
+
+        if shape == "square":
+            mask = np.full((size, size), alpha, dtype=np.float32)
+        elif shape == "circle":
+            yy, xx = np.mgrid[0:size, 0:size]
+            center = (size - 1) / 2.0
+            radius = max(1.0, size / 2.0)
+            dist = np.sqrt((xx - center) ** 2 + (yy - center) ** 2)
+            mask = (dist <= radius).astype(np.float32) * alpha
+        else:
+            raise ValueError(f"Unknown patch shape: {shape}")
+
+        if edge_softness > 0:
+            kernel = max(3, int(round(size * edge_softness)))
+            if kernel % 2 == 0:
+                kernel += 1
+            mask = cv2.GaussianBlur(mask, (kernel, kernel), 0)
+            max_value = float(mask.max()) if mask.size else 0.0
+            if max_value > 0:
+                mask = (mask / max_value) * alpha
+
+        return mask
     
     def _resolve_regions(
         self,
@@ -307,7 +377,12 @@ class BlackBoxAttacks(AttackBase):
         target_class: Optional[Union[str, List[str]]] = None,
         patch_strategy: str = "center",
         patch_size_ratio: float = 0.15,
-        return_metadata: bool = False
+        return_metadata: bool = False,
+        patch_alpha: float = 1.0,
+        patch_texture: str = "solid",
+        texture_strength: float = 0.15,
+        edge_softness: float = 0.0,
+        patch_shape: str = "square",
     ) -> Union[np.ndarray, Tuple[np.ndarray, Dict[str, Any]]]:
         """
         Apply adversarial patch with optional object targeting via YOLO detection.
@@ -390,21 +465,57 @@ class BlackBoxAttacks(AttackBase):
             x_end = min(x_start + size, w)
             y_end = min(y_start + size, h)
             
-            # Применение цвета
-            adversarial[y_start:y_end, x_start:x_end] = patch_color
+            patch_h = y_end - y_start
+            patch_w = x_end - x_start
+            actual_size = min(patch_h, patch_w)
+            if actual_size <= 0:
+                continue
+
+            patch_texture_img = self._build_patch_texture(
+                base_color=patch_color,
+                size=actual_size,
+                texture_mode=patch_texture,
+                texture_strength=texture_strength,
+            )
+            patch_mask = self._build_patch_mask(
+                size=actual_size,
+                alpha=patch_alpha,
+                edge_softness=edge_softness,
+                shape=patch_shape,
+            )
+
+            roi = adversarial[
+                y_start:y_start + actual_size,
+                x_start:x_start + actual_size,
+            ].astype(np.float32)
+            alpha_mask = patch_mask[..., None]
+            blended = (1.0 - alpha_mask) * roi + alpha_mask * patch_texture_img
+            adversarial[
+                y_start:y_start + actual_size,
+                x_start:x_start + actual_size,
+            ] = np.clip(blended, 0, 255).astype(np.uint8)
             
             applied_patches.append({
                 "top_left": (x_start, y_start),
-                "bottom_right": (x_end, y_end),
-                "size": size,
+                "bottom_right": (x_start + actual_size, y_start + actual_size),
+                "size": actual_size,
                 "color": patch_color,
-                "centered": is_center
+                "centered": is_center,
+                "alpha": patch_alpha,
+                "texture": patch_texture,
+                "texture_strength": texture_strength,
+                "edge_softness": edge_softness,
+                "shape": patch_shape,
             })
         
         self.log_attack('patch_attack', 
                     patches_applied=len(applied_patches),
                     patch_color=patch_color,
-                    target_class=target_class)
+                    target_class=target_class,
+                    patch_alpha=patch_alpha,
+                    patch_texture=patch_texture,
+                    edge_softness=edge_softness,
+                    patch_shape=patch_shape)
         
         if return_metadata:
             return adversarial, {"patches": applied_patches, "image_shape": (h, w)}

@@ -4,3 +4,5 @@ Pillow>=8.0.0
 requests>=2.26.0
 PyYAML>=5.4.0
 tensorflow
+torch>=2.0.0
+ultralytics>=8.0.0
