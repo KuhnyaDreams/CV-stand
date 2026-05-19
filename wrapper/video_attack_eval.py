@@ -1,8 +1,10 @@
 import argparse
+import csv
 import json
 import time
 from pathlib import Path
 
+from attack_presets import get_attack_preset_params, load_attack_presets, merge_attack_params
 from io_utils import ensure_dir, make_data_temp_path, make_temp_filename
 from model_functions import analyze_video_phone
 from video_attacks import VideoBlackBoxAttacks
@@ -87,6 +89,120 @@ class VideoAttackEvaluator:
             json.dump(report, report_file, indent=2, ensure_ascii=False)
 
         return report_path
+
+    def _save_comparison_csv(self, rows: list[dict], output_path: str | Path) -> Path:
+        """
+        Save a flat comparison table for quick spreadsheet-style analysis.
+        """
+        output_path = Path(output_path)
+        ensure_dir(output_path.parent)
+
+        if not rows:
+            with open(output_path, "w", encoding="utf-8", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(["experiment_name", "attack_name", "status"])
+            return output_path
+
+        fieldnames = [
+            "experiment_name",
+            "attack_name",
+            "attack_params_json",
+            "interval_count",
+            "total_time_with_phone",
+            "detection_ratio",
+            "avg_phone_confidence",
+            "attacked_video_path",
+            "status",
+            "interval_count_drop",
+            "phone_time_drop",
+            "detection_ratio_drop",
+            "phone_confidence_drop",
+            "success",
+        ]
+
+        with open(output_path, "w", encoding="utf-8", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(rows)
+
+        return output_path
+
+    def _build_baseline_comparison_row(self, baseline_metrics: dict) -> dict:
+        """
+        Build a dedicated baseline row for the comparison CSV.
+        """
+        return {
+            "row_type": "baseline",
+            "experiment_name": "baseline",
+            "attack_name": "baseline",
+            "attack_params_json": "",
+            "interval_count": baseline_metrics["interval_count"],
+            "total_time_with_phone": baseline_metrics["total_time_with_phone"],
+            "detection_ratio": baseline_metrics["detection_ratio"],
+            "avg_phone_confidence": baseline_metrics["avg_phone_confidence"],
+            "attacked_video_path": "",
+            "status": "",
+            "error": "",
+            "interval_count_drop": "",
+            "phone_time_drop": "",
+            "detection_ratio_drop": "",
+            "phone_confidence_drop": "",
+            "success": "",
+        }
+
+    def _build_comparison_row(
+        self,
+        experiment_name: str,
+        attack_name: str,
+        attack_params: dict,
+        baseline_metrics: dict,
+        attacked_metrics: dict | None = None,
+        attacked_video_path: str | None = None,
+        error: str | None = None,
+    ) -> dict:
+        """
+        Flatten one experiment into a compact row for CSV-style comparisons.
+        """
+        row = {
+            "row_type": "attack",
+            "experiment_name": experiment_name,
+            "attack_name": attack_name,
+            "attack_params_json": json.dumps(attack_params, ensure_ascii=False, sort_keys=True),
+            "interval_count": "",
+            "total_time_with_phone": "",
+            "detection_ratio": "",
+            "avg_phone_confidence": "",
+            "attacked_video_path": attacked_video_path or "",
+            "status": "error" if error else "ok",
+            "error": error or "",
+        }
+
+        if attacked_metrics is None:
+            row.update(
+                {
+                    "interval_count_drop": "",
+                    "phone_time_drop": "",
+                    "detection_ratio_drop": "",
+                    "phone_confidence_drop": "",
+                    "success": "",
+                }
+            )
+            return row
+
+        row.update(
+            {
+                "interval_count": attacked_metrics["interval_count"],
+                "interval_count_drop": baseline_metrics["interval_count"] - attacked_metrics["interval_count"],
+                "total_time_with_phone": attacked_metrics["total_time_with_phone"],
+                "phone_time_drop": baseline_metrics["total_time_with_phone"] - attacked_metrics["total_time_with_phone"],
+                "detection_ratio": attacked_metrics["detection_ratio"],
+                "detection_ratio_drop": baseline_metrics["detection_ratio"] - attacked_metrics["detection_ratio"],
+                "avg_phone_confidence": attacked_metrics["avg_phone_confidence"],
+                "phone_confidence_drop": baseline_metrics["avg_phone_confidence"] - attacked_metrics["avg_phone_confidence"],
+                "success": attacked_metrics["detection_ratio"] < baseline_metrics["detection_ratio"],
+            }
+        )
+        return row
 
     def _generate_multi_attack_summary(self, baseline_detections: int, attacks_report: dict) -> dict:
         """
@@ -548,8 +664,277 @@ class VideoAttackEvaluator:
 
         return report
 
+    def run_attack_experiments(
+        self,
+        local_input_video_path: str,
+        experiments: list[dict],
+        frame_interval: int = 1,
+        conf_thres: float = 0.25,
+        iou_threshold: float = 0.2,
+        report_name: str = "bb_experiment_grid",
+    ) -> dict:
+        """
+        Run an arbitrary list of attack experiments.
+
+        Each experiment item is expected to look like:
+        {
+            "name": "blur_k15",
+            "attack_name": "gaussian_blur_attack",
+            "attack_params": {"kernel_size": 15}
+        }
+        """
+        local_video_path = Path(local_input_video_path)
+        if not local_video_path.exists():
+            raise ValueError(f"Input video not found: {local_video_path}")
+
+        core_input_video_name = local_video_path.name
+        baseline_result = analyze_video_phone(
+            video_path=core_input_video_name,
+            frame_interval=frame_interval,
+            conf_thres=conf_thres,
+            iou_threshold=iou_threshold,
+        )
+        baseline_metrics = self._extract_analysis_metrics(baseline_result)
+
+        experiment_results = []
+        comparison_rows = []
+
+        for index, experiment in enumerate(experiments, start=1):
+            attack_name = experiment.get("attack_name")
+            experiment_name = experiment.get("name") or f"{attack_name}_{index:03d}"
+            attack_params = experiment.get("attack_params", {}) or {}
+
+            attack_method = getattr(self.video_attacks, attack_name, None)
+            if attack_method is None:
+                error = f"Unknown video attack: {attack_name}"
+                experiment_results.append(
+                    {
+                        "name": experiment_name,
+                        "attack_name": attack_name,
+                        "attack_params": attack_params,
+                        "error": error,
+                    }
+                )
+                comparison_rows.append(
+                    self._build_comparison_row(
+                        experiment_name=experiment_name,
+                        attack_name=attack_name,
+                        attack_params=attack_params,
+                        baseline_metrics=baseline_metrics,
+                        error=error,
+                    )
+                )
+                continue
+
+            temp_filename = make_temp_filename(
+                prefix=f"attack_{experiment_name}",
+                suffix=local_video_path.suffix,
+            )
+            attacked_video_path = make_data_temp_path(temp_filename)
+
+            try:
+                attack_method(
+                    input_video_path=str(local_video_path),
+                    output_video_path=str(attacked_video_path),
+                    **attack_params,
+                )
+
+                attacked_result = analyze_video_phone(
+                    video_path=attacked_video_path.name,
+                    frame_interval=frame_interval,
+                    conf_thres=conf_thres,
+                    iou_threshold=iou_threshold,
+                )
+                attacked_metrics = self._extract_analysis_metrics(attacked_result)
+                success = attacked_metrics["detection_ratio"] < baseline_metrics["detection_ratio"]
+
+                experiment_result = {
+                    "name": experiment_name,
+                    "attack_name": attack_name,
+                    "attack_params": attack_params,
+                    "attacked_video_path": str(attacked_video_path),
+                    "attacked_result": attacked_result,
+                    "metrics": {
+                        "attacked_interval_count": attacked_metrics["interval_count"],
+                        "interval_count_drop": baseline_metrics["interval_count"] - attacked_metrics["interval_count"],
+                        "attacked_total_time_with_phone": attacked_metrics["total_time_with_phone"],
+                        "phone_time_drop": baseline_metrics["total_time_with_phone"] - attacked_metrics["total_time_with_phone"],
+                        "attacked_detection_ratio": attacked_metrics["detection_ratio"],
+                        "detection_ratio_drop": baseline_metrics["detection_ratio"] - attacked_metrics["detection_ratio"],
+                        "attacked_avg_phone_confidence": attacked_metrics["avg_phone_confidence"],
+                        "phone_confidence_drop": baseline_metrics["avg_phone_confidence"] - attacked_metrics["avg_phone_confidence"],
+                        "success": success,
+                    },
+                }
+                experiment_results.append(experiment_result)
+                comparison_rows.append(
+                    self._build_comparison_row(
+                        experiment_name=experiment_name,
+                        attack_name=attack_name,
+                        attack_params=attack_params,
+                        baseline_metrics=baseline_metrics,
+                        attacked_metrics=attacked_metrics,
+                        attacked_video_path=str(attacked_video_path),
+                    )
+                )
+            except Exception as exc:
+                error = str(exc)
+                experiment_results.append(
+                    {
+                        "name": experiment_name,
+                        "attack_name": attack_name,
+                        "attack_params": attack_params,
+                        "attacked_video_path": str(attacked_video_path),
+                        "error": error,
+                    }
+                )
+                comparison_rows.append(
+                    self._build_comparison_row(
+                        experiment_name=experiment_name,
+                        attack_name=attack_name,
+                        attack_params=attack_params,
+                        baseline_metrics=baseline_metrics,
+                        attacked_video_path=str(attacked_video_path),
+                        error=error,
+                    )
+                )
+
+        comparison_rows.append(self._build_baseline_comparison_row(baseline_metrics))
+
+        successful_experiments = [
+            item for item in comparison_rows
+            if item["status"] == "ok" and item.get("row_type") == "attack"
+        ]
+        successful_experiments.sort(
+            key=lambda row: (
+                float(row["detection_ratio_drop"]) if row["detection_ratio_drop"] != "" else float("-inf"),
+                float(row["phone_time_drop"]) if row["phone_time_drop"] != "" else float("-inf"),
+            ),
+            reverse=True,
+        )
+
+        leaderboard = [
+            {
+                "rank": index + 1,
+                "experiment_name": row["experiment_name"],
+                "attack_name": row["attack_name"],
+                "attack_params_json": row["attack_params_json"],
+                "detection_ratio_drop": row["detection_ratio_drop"],
+                "phone_time_drop": row["phone_time_drop"],
+                "phone_confidence_drop": row["phone_confidence_drop"],
+            }
+            for index, row in enumerate(successful_experiments)
+        ]
+
+        report = {
+            "input_video": str(local_video_path),
+            "core_input_video_name": core_input_video_name,
+            "attack_name": report_name,
+            "analysis_params": {
+                "frame_interval": frame_interval,
+                "conf_thres": conf_thres,
+                "iou_threshold": iou_threshold,
+            },
+            "baseline": baseline_metrics,
+            "baseline_result": baseline_result,
+            "experiments": experiment_results,
+            "leaderboard": leaderboard,
+            "summary": {
+                "total_experiments": len(experiments),
+                "successful_experiments": sum(
+                    1
+                    for row in comparison_rows
+                    if row.get("row_type") == "attack" and row["status"] == "ok"
+                ),
+                "effective_experiments": sum(
+                    1
+                    for row in comparison_rows
+                    if row.get("row_type") == "attack" and row["status"] == "ok" and row["success"] is True
+                ),
+            },
+        }
+
+        report_path = self._save_report(report)
+        csv_path = Path(report_path).with_suffix(".csv")
+        self._save_comparison_csv(comparison_rows, csv_path)
+
+        report["report_path"] = str(report_path)
+        report["comparison_csv_path"] = str(csv_path)
+        return report
+
 
 if __name__ == "__main__":
+    def build_cli_attack_overrides(args: argparse.Namespace, attack_name: str) -> dict:
+        """
+        Build explicit CLI overrides for one attack.
+
+        Only parameters that were actually provided in CLI are included here, so
+        they can safely override preset values without injecting unrelated defaults.
+        """
+        attack_params = {}
+
+        if args.temporal_mode is not None:
+            attack_params["temporal_mode"] = args.temporal_mode
+        if args.flicker_period is not None:
+            attack_params["flicker_period"] = args.flicker_period
+        if args.flicker_active_ratio is not None:
+            attack_params["flicker_active_ratio"] = args.flicker_active_ratio
+
+        if attack_name == "patch_attack":
+            if args.patch_size is not None:
+                attack_params["patch_size"] = args.patch_size
+            if args.patch_color is not None:
+                attack_params["patch_color"] = tuple(args.patch_color)
+            if args.patch_position is not None:
+                attack_params["patch_position"] = args.patch_position
+            if args.patch_x is not None:
+                attack_params["patch_x"] = args.patch_x
+            if args.patch_y is not None:
+                attack_params["patch_y"] = args.patch_y
+            if args.patch_alpha is not None:
+                attack_params["patch_alpha"] = args.patch_alpha
+            if args.patch_texture is not None:
+                attack_params["patch_texture"] = args.patch_texture
+            if args.texture_strength is not None:
+                attack_params["texture_strength"] = args.texture_strength
+            if args.edge_softness is not None:
+                attack_params["edge_softness"] = args.edge_softness
+            if args.patch_shape is not None:
+                attack_params["patch_shape"] = args.patch_shape
+        elif attack_name == "gaussian_blur_attack":
+            if args.kernel_size is not None:
+                attack_params["kernel_size"] = args.kernel_size
+        elif attack_name == "motion_blur_attack":
+            if args.kernel_size is not None:
+                attack_params["kernel_size"] = args.kernel_size
+            if args.motion_angle is not None:
+                attack_params["angle_degrees"] = args.motion_angle
+        elif attack_name == "random_noise_attack":
+            if args.noise_level is not None:
+                attack_params["noise_level"] = args.noise_level
+        elif attack_name == "low_light_attack":
+            if args.brightness_factor is not None:
+                attack_params["brightness_factor"] = args.brightness_factor
+            if args.noise_level is not None:
+                attack_params["noise_level"] = args.noise_level
+        elif attack_name == "brightness_attack":
+            if args.brightness_factor is not None:
+                attack_params["factor"] = args.brightness_factor
+        elif attack_name == "contrast_attack":
+            if args.contrast_factor is not None:
+                attack_params["factor"] = args.contrast_factor
+        elif attack_name == "compression_attack":
+            if args.jpeg_quality is not None:
+                attack_params["jpeg_quality"] = args.jpeg_quality
+        elif attack_name == "downscale_upscale_attack":
+            if args.scale_factor is not None:
+                attack_params["scale_factor"] = args.scale_factor
+        elif attack_name == "frame_drop_attack":
+            if args.drop_every_n is not None:
+                attack_params["drop_every_n"] = args.drop_every_n
+
+        return attack_params
+
     parser = argparse.ArgumentParser(
         description="Run black-box attacks on a video and compare baseline vs attacked detection.",
     )
@@ -563,9 +948,23 @@ if __name__ == "__main__":
         default="patch_attack",
         help=(
             "Single attack method name. Available now: gaussian_blur_attack, "
-            "random_noise_attack, brightness_attack, contrast_attack, "
-            "blackout_attack, patch_attack."
+            "motion_blur_attack, random_noise_attack, low_light_attack, brightness_attack, contrast_attack, "
+            "blackout_attack, patch_attack, compression_attack, "
+            "downscale_upscale_attack, frame_drop_attack."
         ),
+    )
+    parser.add_argument(
+        "--preset",
+        default=None,
+        help=(
+            "Optional preset name for the selected attack. "
+            "Example: --attack compression_attack --preset strong"
+        ),
+    )
+    parser.add_argument(
+        "--presets-file",
+        default="./bb_attack_presets.json",
+        help="Path to the JSON file that stores attack presets.",
     )
     parser.add_argument(
         "--attacks",
@@ -579,10 +978,42 @@ if __name__ == "__main__":
         help="Run all currently available black-box video attacks with default parameters.",
     )
     parser.add_argument(
+        "--experiment-config",
+        default=None,
+        help=(
+            "Path to JSON config with a list of experiments. "
+            "Useful for comparing one attack with many parameter sets or comparing different attacks."
+        ),
+    )
+    parser.add_argument(
         "--frame-interval",
         type=int,
         default=1,
         help="Analyze every N-th frame in analyze_video_phone. Example: --frame-interval 2",
+    )
+    parser.add_argument(
+        "--temporal-mode",
+        choices=["always", "flicker"],
+        default=None,
+        help=(
+            "Temporal policy for video attacks. "
+            "always: attack every frame; flicker: attack only part of frames."
+        ),
+    )
+    parser.add_argument(
+        "--flicker-period",
+        type=int,
+        default=None,
+        help="Cycle length in frames for temporal_mode=flicker. Example: --flicker-period 6",
+    )
+    parser.add_argument(
+        "--flicker-active-ratio",
+        type=float,
+        default=None,
+        help=(
+            "Fraction of frames inside one flicker cycle that should be attacked. "
+            "Example: --flicker-active-ratio 0.5"
+        ),
     )
     parser.add_argument(
         "--patch-size",
@@ -601,7 +1032,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--patch-position",
         choices=["random", "fixed", "person-centered"],
-        default="random",
+        default=None,
         help=(
             "Patch placement mode. random: new random position per frame; "
             "fixed: same position for all frames; person-centered: planned, not implemented yet."
@@ -656,6 +1087,12 @@ if __name__ == "__main__":
         help="Gaussian blur kernel size. Used only with gaussian_blur_attack. Example: --kernel-size 9",
     )
     parser.add_argument(
+        "--motion-angle",
+        type=float,
+        default=None,
+        help="Motion blur direction in degrees. Used only with motion_blur_attack. Example: --motion-angle 15",
+    )
+    parser.add_argument(
         "--noise-level",
         type=float,
         default=None,
@@ -665,13 +1102,31 @@ if __name__ == "__main__":
         "--brightness-factor",
         type=float,
         default=None,
-        help="Brightness multiplier. Used only with brightness_attack. Example: --brightness-factor 0.5",
+        help="Brightness multiplier. Used with brightness_attack or as darkening factor for low_light_attack. Example: --brightness-factor 0.5",
     )
     parser.add_argument(
         "--contrast-factor",
         type=float,
         default=None,
         help="Contrast multiplier. Used only with contrast_attack. Example: --contrast-factor 0.5",
+    )
+    parser.add_argument(
+        "--jpeg-quality",
+        type=int,
+        default=None,
+        help="JPEG quality for compression_attack. Lower values mean stronger artifacts. Example: --jpeg-quality 20",
+    )
+    parser.add_argument(
+        "--scale-factor",
+        type=float,
+        default=None,
+        help="Resize factor for downscale_upscale_attack. Smaller values mean stronger quality loss. Example: --scale-factor 0.35",
+    )
+    parser.add_argument(
+        "--drop-every-n",
+        type=int,
+        default=None,
+        help="For frame_drop_attack, replace every N-th frame with the previous frame. Example: --drop-every-n 4",
     )
     parser.add_argument(
         "--defend",
@@ -686,44 +1141,52 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
-    attack_params = {}
-    if args.attack == "patch_attack":
-        if args.patch_size is not None:
-            attack_params["patch_size"] = args.patch_size
-        if args.patch_color is not None:
-            attack_params["patch_color"] = tuple(args.patch_color)
-        attack_params["patch_position"] = args.patch_position
-        if args.patch_x is not None:
-            attack_params["patch_x"] = args.patch_x
-        if args.patch_y is not None:
-            attack_params["patch_y"] = args.patch_y
-        if args.patch_alpha is not None:
-            attack_params["patch_alpha"] = args.patch_alpha
-        if args.patch_texture is not None:
-            attack_params["patch_texture"] = args.patch_texture
-        if args.texture_strength is not None:
-            attack_params["texture_strength"] = args.texture_strength
-        if args.edge_softness is not None:
-            attack_params["edge_softness"] = args.edge_softness
-        if args.patch_shape is not None:
-            attack_params["patch_shape"] = args.patch_shape
-    elif args.attack == "gaussian_blur_attack":
-        if args.kernel_size is not None:
-            attack_params["kernel_size"] = args.kernel_size
-    elif args.attack == "random_noise_attack":
-        if args.noise_level is not None:
-            attack_params["noise_level"] = args.noise_level
-    elif args.attack == "brightness_attack":
-        if args.brightness_factor is not None:
-            attack_params["factor"] = args.brightness_factor
-    elif args.attack == "contrast_attack":
-        if args.contrast_factor is not None:
-            attack_params["factor"] = args.contrast_factor
+    presets = load_attack_presets(args.presets_file)
+    preset_params = get_attack_preset_params(args.attack, args.preset, presets)
+    cli_attack_overrides = build_cli_attack_overrides(args, args.attack)
+    attack_params = merge_attack_params(preset_params, cli_attack_overrides)
 
     evaluator = VideoAttackEvaluator()
 
-    if args.defend:
+    if args.experiment_config:
+        config_path = Path(args.experiment_config)
+        if not config_path.exists():
+            raise ValueError(f"Experiment config not found: {config_path}")
+
+        config_data = json.loads(config_path.read_text(encoding="utf-8"))
+        raw_experiments = config_data.get("experiments", [])
+        if not raw_experiments:
+            raise ValueError("Experiment config does not contain any experiments.")
+
+        experiments = []
+        for experiment in raw_experiments:
+            attack_name = experiment.get("attack_name")
+            if not attack_name:
+                raise ValueError(f"Experiment without attack_name: {experiment}")
+
+            experiment_preset = experiment.get("preset")
+            experiment_preset_params = get_attack_preset_params(
+                attack_name,
+                experiment_preset,
+                presets,
+            )
+            explicit_attack_params = experiment.get("attack_params", {})
+            resolved_attack_params = merge_attack_params(
+                experiment_preset_params,
+                explicit_attack_params,
+            )
+
+            resolved_experiment = dict(experiment)
+            resolved_experiment["attack_params"] = resolved_attack_params
+            experiments.append(resolved_experiment)
+
+        report = evaluator.run_attack_experiments(
+            local_input_video_path=args.video,
+            experiments=experiments,
+            frame_interval=args.frame_interval,
+            report_name=config_data.get("report_name", "bb_experiment_grid"),
+        )
+    elif args.defend:
         report = evaluator.run_bb_attack_defense(
             local_input_video_path=args.video,
             attack_name=args.attack,
@@ -737,9 +1200,14 @@ if __name__ == "__main__":
             local_input_video_path=args.video,
             attack_names=[
                 "gaussian_blur_attack",
+                "motion_blur_attack",
                 "random_noise_attack",
+                "low_light_attack",
                 "brightness_attack",
                 "contrast_attack",
+                "compression_attack",
+                "downscale_upscale_attack",
+                "frame_drop_attack",
                 "blackout_attack",
                 "patch_attack",
             ],

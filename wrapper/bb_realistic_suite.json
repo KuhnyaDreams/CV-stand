@@ -1,0 +1,65 @@
+{
+  "report_name": "bb_realistic_suite",
+  "experiments": [
+    {
+      "name": "gaussian_blur_medium",
+      "attack_name": "gaussian_blur_attack",
+      "preset": "medium"
+    },
+    {
+      "name": "gaussian_blur_strong",
+      "attack_name": "gaussian_blur_attack",
+      "preset": "strong"
+    },
+    {
+      "name": "motion_blur_medium",
+      "attack_name": "motion_blur_attack",
+      "preset": "medium"
+    },
+    {
+      "name": "motion_blur_strong",
+      "attack_name": "motion_blur_attack",
+      "preset": "strong"
+    },
+    {
+      "name": "noise_medium",
+      "attack_name": "random_noise_attack",
+      "preset": "medium"
+    },
+    {
+      "name": "low_light_medium",
+      "attack_name": "low_light_attack",
+      "preset": "medium"
+    },
+    {
+      "name": "compression_medium",
+      "attack_name": "compression_attack",
+      "preset": "medium"
+    },
+    {
+      "name": "compression_strong",
+      "attack_name": "compression_attack",
+      "preset": "strong"
+    },
+    {
+      "name": "downscale_medium",
+      "attack_name": "downscale_upscale_attack",
+      "preset": "medium"
+    },
+    {
+      "name": "downscale_strong",
+      "attack_name": "downscale_upscale_attack",
+      "preset": "strong"
+    },
+    {
+      "name": "frame_drop_medium",
+      "attack_name": "frame_drop_attack",
+      "preset": "medium"
+    },
+    {
+      "name": "patch_stealth_medium",
+      "attack_name": "patch_attack",
+      "preset": "stealth_medium"
+    }
+  ]
+}

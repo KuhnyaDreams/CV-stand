@@ -1,0 +1,57 @@
+{
+  "report_name": "bb_patch_and_blur_compare",
+  "experiments": [
+    {
+      "name": "blur_k9",
+      "attack_name": "gaussian_blur_attack",
+      "preset": "medium",
+      "attack_params": {
+        "kernel_size": 9
+      }
+    },
+    {
+      "name": "blur_k15",
+      "attack_name": "gaussian_blur_attack",
+      "preset": "strong",
+      "attack_params": {
+        "kernel_size": 15
+      }
+    },
+    {
+      "name": "noise_010",
+      "attack_name": "random_noise_attack",
+      "preset": "medium",
+      "attack_params": {
+        "noise_level": 0.1
+      }
+    },
+    {
+      "name": "patch_fixed_soft_64",
+      "attack_name": "patch_attack",
+      "preset": "stealth_light",
+      "attack_params": {
+        "patch_size": 64,
+        "patch_position": "fixed",
+        "patch_alpha": 0.45,
+        "patch_texture": "camouflage",
+        "texture_strength": 0.12,
+        "edge_softness": 0.18,
+        "patch_shape": "circle"
+      }
+    },
+    {
+      "name": "patch_fixed_soft_96",
+      "attack_name": "patch_attack",
+      "preset": "stealth_medium",
+      "attack_params": {
+        "patch_size": 96,
+        "patch_position": "fixed",
+        "patch_alpha": 0.45,
+        "patch_texture": "camouflage",
+        "texture_strength": 0.12,
+        "edge_softness": 0.18,
+        "patch_shape": "circle"
+      }
+    }
+  ]
+}

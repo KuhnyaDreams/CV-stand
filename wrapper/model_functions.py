@@ -180,7 +180,7 @@ def classify(input_path, save_images = True):
     """Классификация изображения/папки."""
     return _call_core('classify', input_path, None, save_images)
 
-def analyze_video_phone(video_path: str, frame_interval: int = 1, conf_thres: float = 0.25, iou_threshold: float = 0.2):
+def analyze_video_phone(video_path: str, frame_interval: int = 3, conf_thres: float = 0.25, iou_threshold: float = 0.2):
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     path = Path(video_path)
     name = path.stem

@@ -81,6 +81,48 @@ class BlackBoxAttacks(AttackBase):
                 mask = (mask / max_value) * alpha
 
         return mask
+
+    def _load_patch_image(
+        self,
+        patch_image_path: str,
+        size: int,
+    ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+        """
+        Load an external patch image, resize it to the requested size, and return:
+        - patch RGB/BGR data as float32 image
+        - optional alpha mask from the source file
+        """
+        patch_image = cv2.imread(patch_image_path, cv2.IMREAD_UNCHANGED)
+        if patch_image is None:
+            raise ValueError(f"Cannot load patch image: {patch_image_path}")
+
+        if patch_image.ndim == 2:
+            patch_image = cv2.cvtColor(patch_image, cv2.COLOR_GRAY2BGR)
+
+        source_alpha = None
+        if patch_image.ndim == 3 and patch_image.shape[2] == 4:
+            source_alpha = patch_image[:, :, 3].astype(np.float32) / 255.0
+            patch_image = patch_image[:, :, :3]
+            patch_image = cv2.cvtColor(patch_image, cv2.COLOR_BGR2RGB)
+        else:
+            patch_image = cv2.cvtColor(patch_image, cv2.COLOR_BGR2RGB)
+
+        resized_patch = cv2.resize(
+            patch_image,
+            (size, size),
+            interpolation=cv2.INTER_CUBIC,
+        ).astype(np.float32)
+
+        resized_alpha = None
+        if source_alpha is not None:
+            resized_alpha = cv2.resize(
+                source_alpha,
+                (size, size),
+                interpolation=cv2.INTER_LINEAR,
+            ).astype(np.float32)
+            resized_alpha = np.clip(resized_alpha, 0.0, 1.0)
+
+        return resized_patch, resized_alpha
     
     def _resolve_regions(
         self,
@@ -366,6 +408,130 @@ class BlackBoxAttacks(AttackBase):
             return cv2.GaussianBlur(crop, (ky, kx), 0)
 
         return self._apply_op_to_regions(image, regions, op, lambda img: op(img))
+
+    def motion_blur_attack(
+        self,
+        image: np.ndarray,
+        kernel_size: Optional[int] = None,
+        angle_degrees: Optional[float] = None,
+        attack_coordinates: Optional[Union[List[Tuple[int, int]], List[Dict[str, Any]]]] = None,
+        detection_result: Optional[Dict[str, Any]] = None,
+        target_class: Optional[Union[str, List[str]]] = None,
+        strategy: str = "center",
+        points_per_bbox: int = 1,
+        region_size: Optional[int] = None,
+    ) -> np.ndarray:
+        """
+        Apply directional motion blur to simulate camera or object movement.
+        """
+        self.validate_image(image)
+
+        if kernel_size is None:
+            kernel_size = 9
+        if angle_degrees is None:
+            angle_degrees = 0.0
+
+        kernel_size = max(1, int(kernel_size))
+        if kernel_size % 2 == 0:
+            kernel_size += 1
+
+        angle_degrees = float(angle_degrees)
+
+        regions = self._resolve_regions(
+            image.shape[:2],
+            attack_coordinates,
+            detection_result,
+            target_class,
+            strategy,
+            points_per_bbox,
+            region_size,
+        )
+        self.log_attack(
+            "motion_blur_attack",
+            kernel_size=kernel_size,
+            angle_degrees=angle_degrees,
+            regions=len(regions) if regions else "all",
+        )
+
+        def op(crop: np.ndarray) -> np.ndarray:
+            k = min(kernel_size, max(1, min(crop.shape[:2]) // 2 * 2 + 1))
+            if k <= 1:
+                return crop
+            if k % 2 == 0:
+                k += 1
+
+            kernel = np.zeros((k, k), dtype=np.float32)
+            kernel[k // 2, :] = 1.0
+
+            rotation_matrix = cv2.getRotationMatrix2D((k / 2 - 0.5, k / 2 - 0.5), angle_degrees, 1.0)
+            kernel = cv2.warpAffine(kernel, rotation_matrix, (k, k))
+            kernel_sum = float(kernel.sum())
+            if kernel_sum > 0:
+                kernel /= kernel_sum
+
+            return cv2.filter2D(crop, -1, kernel)
+
+        return self._apply_op_to_regions(image, regions, op, lambda img: op(img))
+
+    def downscale_upscale_attack(
+        self,
+        image: np.ndarray,
+        scale_factor: Optional[float] = None,
+        interpolation_down: int = cv2.INTER_AREA,
+        interpolation_up: int = cv2.INTER_LINEAR,
+        attack_coordinates: Optional[Union[List[Tuple[int, int]], List[Dict[str, Any]]]] = None,
+        detection_result: Optional[Dict[str, Any]] = None,
+        target_class: Optional[Union[str, List[str]]] = None,
+        strategy: str = "center",
+        points_per_bbox: int = 1,
+        region_size: Optional[int] = None,
+    ) -> np.ndarray:
+        """
+        Reduce spatial detail by shrinking the image and resizing it back.
+
+        This simulates low-resolution video streams, digital zoom, or aggressive
+        transport compression that makes small objects like phones harder to see.
+        """
+        self.validate_image(image)
+
+        if scale_factor is None:
+            scale_factor = 0.5
+
+        scale_factor = float(np.clip(scale_factor, 0.05, 1.0))
+
+        regions = self._resolve_regions(
+            image.shape[:2],
+            attack_coordinates,
+            detection_result,
+            target_class,
+            strategy,
+            points_per_bbox,
+            region_size,
+        )
+        self.log_attack(
+            "downscale_upscale_attack",
+            scale_factor=scale_factor,
+            regions=len(regions) if regions else "all",
+        )
+
+        def op(crop: np.ndarray) -> np.ndarray:
+            height, width = crop.shape[:2]
+            small_width = max(1, int(round(width * scale_factor)))
+            small_height = max(1, int(round(height * scale_factor)))
+
+            reduced = cv2.resize(
+                crop,
+                (small_width, small_height),
+                interpolation=interpolation_down,
+            )
+            restored = cv2.resize(
+                reduced,
+                (width, height),
+                interpolation=interpolation_up,
+            )
+            return restored
+
+        return self._apply_op_to_regions(image, regions, op, lambda img: op(img))
     
     def patch_attack(
         self,
@@ -383,6 +549,7 @@ class BlackBoxAttacks(AttackBase):
         texture_strength: float = 0.15,
         edge_softness: float = 0.0,
         patch_shape: str = "square",
+        patch_image_path: Optional[str] = None,
     ) -> Union[np.ndarray, Tuple[np.ndarray, Dict[str, Any]]]:
         """
         Apply adversarial patch with optional object targeting via YOLO detection.
@@ -471,18 +638,27 @@ class BlackBoxAttacks(AttackBase):
             if actual_size <= 0:
                 continue
 
-            patch_texture_img = self._build_patch_texture(
-                base_color=patch_color,
-                size=actual_size,
-                texture_mode=patch_texture,
-                texture_strength=texture_strength,
-            )
+            source_alpha_mask = None
+            if patch_image_path:
+                patch_texture_img, source_alpha_mask = self._load_patch_image(
+                    patch_image_path=patch_image_path,
+                    size=actual_size,
+                )
+            else:
+                patch_texture_img = self._build_patch_texture(
+                    base_color=patch_color,
+                    size=actual_size,
+                    texture_mode=patch_texture,
+                    texture_strength=texture_strength,
+                )
             patch_mask = self._build_patch_mask(
                 size=actual_size,
                 alpha=patch_alpha,
                 edge_softness=edge_softness,
                 shape=patch_shape,
             )
+            if source_alpha_mask is not None:
+                patch_mask = np.clip(patch_mask * source_alpha_mask, 0.0, 1.0)
 
             roi = adversarial[
                 y_start:y_start + actual_size,
@@ -506,6 +682,7 @@ class BlackBoxAttacks(AttackBase):
                 "texture_strength": texture_strength,
                 "edge_softness": edge_softness,
                 "shape": patch_shape,
+                "patch_image_path": patch_image_path,
             })
         
         self.log_attack('patch_attack', 
@@ -515,7 +692,8 @@ class BlackBoxAttacks(AttackBase):
                     patch_alpha=patch_alpha,
                     patch_texture=patch_texture,
                     edge_softness=edge_softness,
-                    patch_shape=patch_shape)
+                    patch_shape=patch_shape,
+                    patch_image_path=patch_image_path)
         
         if return_metadata:
             return adversarial, {"patches": applied_patches, "image_shape": (h, w)}
@@ -553,6 +731,57 @@ class BlackBoxAttacks(AttackBase):
 
         def op(crop: np.ndarray) -> np.ndarray:
             return np.clip(crop.astype(np.float32) * factor, 0, 255).astype(np.uint8)
+
+        return self._apply_op_to_regions(image, regions, op, lambda img: op(img))
+
+    def low_light_attack(
+        self,
+        image: np.ndarray,
+        brightness_factor: Optional[float] = None,
+        noise_level: Optional[float] = None,
+        attack_coordinates: Optional[Union[List[Tuple[int, int]], List[Dict[str, Any]]]] = None,
+        detection_result: Optional[Dict[str, Any]] = None,
+        target_class: Optional[Union[str, List[str]]] = None,
+        strategy: str = "center",
+        points_per_bbox: int = 1,
+        region_size: Optional[int] = None,
+    ) -> np.ndarray:
+        """
+        Simulate low-light video by darkening the frame and adding sensor-like noise.
+
+        This is more realistic than plain brightness scaling because dark scenes
+        usually become noisier as well.
+        """
+        self.validate_image(image)
+
+        if brightness_factor is None:
+            brightness_factor = 0.45
+        if noise_level is None:
+            noise_level = 0.08
+
+        brightness_factor = float(np.clip(brightness_factor, 0.05, 1.0))
+        noise_level = float(np.clip(noise_level, 0.0, 1.0))
+
+        regions = self._resolve_regions(
+            image.shape[:2],
+            attack_coordinates,
+            detection_result,
+            target_class,
+            strategy,
+            points_per_bbox,
+            region_size,
+        )
+        self.log_attack(
+            "low_light_attack",
+            brightness_factor=brightness_factor,
+            noise_level=noise_level,
+            regions=len(regions) if regions else "all",
+        )
+
+        def op(crop: np.ndarray) -> np.ndarray:
+            darkened = crop.astype(np.float32) * brightness_factor
+            noise = np.random.normal(0, noise_level * 255, crop.shape)
+            return np.clip(darkened + noise, 0, 255).astype(np.uint8)
 
         return self._apply_op_to_regions(image, regions, op, lambda img: op(img))
     

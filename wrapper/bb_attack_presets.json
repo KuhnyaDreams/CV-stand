@@ -1,0 +1,180 @@
+{
+  "gaussian_blur_attack": {
+    "light": {
+      "kernel_size": 5
+    },
+    "medium": {
+      "kernel_size": 9
+    },
+    "strong": {
+      "kernel_size": 15
+    },
+    "flicker_medium": {
+      "kernel_size": 9,
+      "temporal_mode": "flicker",
+      "flicker_period": 6,
+      "flicker_active_ratio": 0.5
+    }
+  },
+  "motion_blur_attack": {
+    "light": {
+      "kernel_size": 7,
+      "angle_degrees": 0
+    },
+    "medium": {
+      "kernel_size": 11,
+      "angle_degrees": 0
+    },
+    "strong": {
+      "kernel_size": 17,
+      "angle_degrees": 0
+    },
+    "flicker_medium": {
+      "kernel_size": 11,
+      "angle_degrees": 0,
+      "temporal_mode": "flicker",
+      "flicker_period": 6,
+      "flicker_active_ratio": 0.5
+    }
+  },
+  "random_noise_attack": {
+    "light": {
+      "noise_level": 0.05
+    },
+    "medium": {
+      "noise_level": 0.1
+    },
+    "strong": {
+      "noise_level": 0.18
+    },
+    "flicker_medium": {
+      "noise_level": 0.1,
+      "temporal_mode": "flicker",
+      "flicker_period": 6,
+      "flicker_active_ratio": 0.5
+    }
+  },
+  "low_light_attack": {
+    "light": {
+      "brightness_factor": 0.65,
+      "noise_level": 0.04
+    },
+    "medium": {
+      "brightness_factor": 0.45,
+      "noise_level": 0.08
+    },
+    "strong": {
+      "brightness_factor": 0.3,
+      "noise_level": 0.12
+    },
+    "flicker_medium": {
+      "brightness_factor": 0.45,
+      "noise_level": 0.08,
+      "temporal_mode": "flicker",
+      "flicker_period": 6,
+      "flicker_active_ratio": 0.5
+    }
+  },
+  "brightness_attack": {
+    "light": {
+      "factor": 0.8
+    },
+    "medium": {
+      "factor": 0.6
+    },
+    "strong": {
+      "factor": 0.4
+    }
+  },
+  "contrast_attack": {
+    "light": {
+      "factor": 0.8
+    },
+    "medium": {
+      "factor": 0.6
+    },
+    "strong": {
+      "factor": 0.4
+    }
+  },
+  "compression_attack": {
+    "light": {
+      "jpeg_quality": 40
+    },
+    "medium": {
+      "jpeg_quality": 25
+    },
+    "strong": {
+      "jpeg_quality": 12
+    }
+  },
+  "downscale_upscale_attack": {
+    "light": {
+      "scale_factor": 0.6
+    },
+    "medium": {
+      "scale_factor": 0.4
+    },
+    "strong": {
+      "scale_factor": 0.25
+    }
+  },
+  "frame_drop_attack": {
+    "light": {
+      "drop_every_n": 8
+    },
+    "medium": {
+      "drop_every_n": 5
+    },
+    "strong": {
+      "drop_every_n": 3
+    },
+    "flicker_medium": {
+      "drop_every_n": 4,
+      "temporal_mode": "flicker",
+      "flicker_period": 6,
+      "flicker_active_ratio": 0.5
+    }
+  },
+  "patch_attack": {
+    "stealth_light": {
+      "patch_size": 64,
+      "patch_position": "fixed",
+      "patch_alpha": 0.35,
+      "patch_texture": "camouflage",
+      "texture_strength": 0.08,
+      "edge_softness": 0.2,
+      "patch_shape": "circle"
+    },
+    "stealth_medium": {
+      "patch_size": 96,
+      "patch_position": "fixed",
+      "patch_alpha": 0.45,
+      "patch_texture": "camouflage",
+      "texture_strength": 0.12,
+      "edge_softness": 0.18,
+      "patch_shape": "circle"
+    },
+    "stealth_strong": {
+      "patch_size": 128,
+      "patch_position": "fixed",
+      "patch_alpha": 0.6,
+      "patch_texture": "noise",
+      "texture_strength": 0.18,
+      "edge_softness": 0.12,
+      "patch_shape": "square"
+    },
+    "stealth_flicker_medium": {
+      "patch_size": 96,
+      "patch_position": "fixed",
+      "patch_alpha": 0.45,
+      "patch_texture": "camouflage",
+      "texture_strength": 0.12,
+      "edge_softness": 0.18,
+      "patch_shape": "circle",
+      "temporal_mode": "flicker",
+      "flicker_period": 6,
+      "flicker_active_ratio": 0.5
+    }
+  }
+}
