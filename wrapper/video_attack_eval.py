@@ -229,7 +229,7 @@ class VideoAttackEvaluator:
         local_input_video_path: str,
         attack_name: str,
         attack_params: dict | None = None,
-        frame_interval: int = 1,
+        frame_interval: int = 15,
         conf_thres: float = 0.25,
         iou_threshold: float = 0.2,
     ) -> dict:
@@ -329,7 +329,7 @@ class VideoAttackEvaluator:
         local_input_video_path: str,
         attack_name: str,
         attack_params: dict | None = None,
-        frame_interval: int = 1,
+        frame_interval: int = 15,
         conf_thres: float = 0.25,
         iou_threshold: float = 0.2,
         frame_skip: int = 1

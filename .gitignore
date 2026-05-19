@@ -119,3 +119,7 @@ Thumbs.db
 
 /yolov5/
 /wrapper/results/
+
+core/calibration_image_sample_data_20x128x128x3_float32.npy
+
+core/yolo26n_saved_model
