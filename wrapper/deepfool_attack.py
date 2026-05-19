@@ -1,266 +1,241 @@
-import torch
-import torch.nn.functional as F
-import torchvision
-import torchvision.transforms as transforms
-from torchvision.models import ResNet50_Weights
+import tensorflow as tf
+import keras
 import numpy as np
 from PIL import Image
 import os
 from model_functions import detect
 
-# Загружаем предобученную ResNet50
-model = torchvision.models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-model.eval()  # Режим инференса
+# ================== КОНФИГУРАЦИЯ ==================
+MODEL_DIR = "../core/yolo26n_saved_model"
+IMAGE_PATH = "../data/test.png"
+OUTPUT_PATH = "../data/adversarial_no_phone_deepfool.png"
+AVOID_CLASS = 67  # "cell phone" в COCO
+NUM_CLASSES = 10  # Количество соседних классов для поиска границы
+OVERSHOOT = 0.05  # Увеличен для более агрессивной атаки
+MAX_ITER = 100    # Увеличен для лучшей сходимости
+IMG_SIZE = 640
+# ===================================================
 
-# Класс "cellular telephone" в ImageNet (индекс 737)
-PHONE_CLASS = 737
+def load_yolo_keras(model_dir, img_size=IMG_SIZE):
+    layer = keras.layers.TFSMLayer(model_dir, call_endpoint='serving_default')
+    inputs = keras.Input(shape=(img_size, img_size, 3), dtype=tf.float32)
+    output = layer(inputs)
+    if isinstance(output, dict):
+        output = list(output.values())[0]
+    return keras.Model(inputs=inputs, outputs=output)
 
-# Параметры нормализации ImageNet
-IMAGENET_MEAN = np.array([0.485, 0.456, 0.406])
-IMAGENET_STD = np.array([0.229, 0.224, 0.225])
-
-
-def save_adversarial_image(img_tensor, output_path):
-    """
-    Сохраняет изображение, возвращая его из нормализованного формата в [0, 255]
-    """
-    img = img_tensor[0].detach().cpu().numpy().copy()
-    
-    # C, H, W -> H, W, C
-    img = np.transpose(img, (1, 2, 0))
-    
-    # Денормализация: img = img * std + mean
-    img = img * IMAGENET_STD + IMAGENET_MEAN
-    
-    # Конвертация в [0, 255]
-    img = np.clip(img * 255, 0, 255).astype(np.uint8)
-    
-    # Сохранение через PIL (ожидает RGB)
-    Image.fromarray(img).save(output_path)
-    print(f"✅ Сохранено: {os.path.abspath(output_path)}")
-
-
-def load_and_preprocess_image(image_path, target_size=(224, 224)):
-    """
-    Загружает и препроцессит изображение для модели
-    Возвращает: тензор (1, 3, H, W) и оригинальный размер
-    """
+def letterbox_preprocess(image_path, target_size=(IMG_SIZE, IMG_SIZE)):
     img = Image.open(image_path).convert('RGB')
-    orig_size = img.size  # (width, height)
+    orig_w, orig_h = img.size
     
-    transform = transforms.Compose([
-        transforms.Resize(target_size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=IMAGENET_MEAN.tolist(), 
-                           std=IMAGENET_STD.tolist())
-    ])
+    r = min(target_size[0] / orig_w, target_size[1] / orig_h)
+    new_w, new_h = int(round(orig_w * r)), int(round(orig_h * r))
     
-    img_tensor = transform(img).unsqueeze(0)  # Добавляем batch dimension
-    return img_tensor, orig_size
+    img_resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    img_array = np.array(img_resized, dtype=np.float32) / 255.0
+    
+    pad_w = (target_size[0] - new_w) / 2
+    pad_h = (target_size[1] - new_h) / 2
+    top, bottom = int(round(pad_h - 0.1)), int(round(pad_h + 0.1))
+    left, right = int(round(pad_w - 0.1)), int(round(pad_w + 0.1))
+    
+    padded = np.pad(img_array, ((top, bottom), (left, right), (0, 0)), 
+                    mode='constant', constant_values=0.447)
+    padded = np.expand_dims(padded, axis=0)
+    
+    meta = {
+        'orig_w': orig_w, 'orig_h': orig_h,
+        'new_w': new_w, 'new_h': new_h,
+        'top': top, 'bottom': bottom, 'left': left, 'right': right
+    }
+    return tf.constant(padded, dtype=tf.float32), meta
 
+def unpad_and_restore(adv_tensor, meta):
+    # ✅ Обработка tf.Variable и tf.Tensor
+    if isinstance(adv_tensor, (tf.Tensor, tf.Variable)):
+        adv_np = adv_tensor.numpy()
+    else:
+        adv_np = adv_tensor
+        
+    if adv_np.ndim == 4:
+        adv_np = adv_np[0]
+        
+    crop = adv_np[meta['top']:meta['top']+meta['new_h'], 
+                  meta['left']:meta['left']+meta['new_w'], :]
+    
+    # ✅ Конвертируем в uint8 ДО ресайза, чтобы PIL применил качественный LANCZOS
+    img_crop = Image.fromarray((crop * 255).clip(0, 255).astype(np.uint8))
+    img_orig = img_crop.resize((meta['orig_w'], meta['orig_h']), Image.Resampling.LANCZOS)
+    return np.array(img_orig, dtype=np.uint8)
 
-def load_original_image(image_path):
-    """
-    Загружает изображение в исходном размере без ресайза
-    """
-    img = Image.open(image_path).convert('RGB')
-    img_array = np.array(img)
-    return img_array, img.size
+def extract_class_score(predictions, class_id):
+    """Извлекает максимальный confidence для целевого класса из YOLO predictions"""
+    confidences = predictions[0, :, 4]
+    detected_classes = predictions[0, :, 5]
+    mask = tf.abs(detected_classes - tf.cast(class_id, tf.float32)) < 0.1
+    masked_conf = tf.where(mask, confidences, -1.0 * tf.ones_like(confidences))
+    return tf.reduce_max(masked_conf + 1.0)  # Сдвиг для обработки пустого случая
 
-
-def deepfool_avoid_class(model, image, avoid_class, num_classes=10, 
-                         overshoot=0.02, max_iter=50):
+def deepfool_avoid_yolo(model, image_tensor, avoid_class, num_classes=NUM_CLASSES,
+                        overshoot=OVERSHOOT, max_iter=MAX_ITER):
     """
-    DeepFool атака для избегания определённого класса.
-    
-    Алгоритм ищет минимальное возмущение, чтобы изображение перестало 
-    классифицироваться как avoid_class, пересекая ближайшую границу решения.
-    
-    Args:
-        model: PyTorch модель в eval mode
-        image: входной тензор (1, 3, 224, 224), нормализованный
-        avoid_class: индекс класса, которого нужно избежать
-        num_classes: количество соседних классов для поиска границы
-        overshoot: коэффициент перерегулирования (обычно 0.02)
-        max_iter: максимальное число итераций
-    
-    Returns:
-        adv_image: возмущённое изображение (тензор)
-        n_iter: фактическое число итераций
+    DeepFool атака для YOLO модели.
+    Ищет минимальное возмущение, чтобы уменьшить confidence целевого класса.
     """
-    model.eval()
-    image = image.clone().detach()
+    image = tf.Variable(image_tensor, dtype=tf.float32)
     
-    # Проверка: если изображение уже не классифицируется как avoid_class
-    with torch.no_grad():
-        output = model(image)
+    # Проверка начального состояния
+    with tf.GradientTape() as tape:
+        tape.watch(image)
+        pred = model(image)
+        init_score = extract_class_score(pred, avoid_class)
     
-    if torch.argmax(output).item() != avoid_class:
-        print(f"⚠️ Изображение уже не классифицируется как класс {avoid_class}")
+    print(f"🎯 Initial score for class {avoid_class}: {init_score.numpy():.4f}")
+    
+    if init_score < 0.05:
+        print(f"⚠️ Target class already has low confidence")
         return image, 0
     
-    input_shape = image.shape
-    r_tot = np.zeros(input_shape)  # Накопленное возмущение
+    r_tot = np.zeros(image_tensor.shape)  # Накопленное возмущение
     
-    loop_i = 0
-    pert_image = image.clone()
-    
-    while loop_i < max_iter:
-        # Включаем градиенты для текущего шага
-        pert_image = pert_image.clone().detach().requires_grad_(True)
-        output = model(pert_image)
+    for iteration in range(max_iter):
+        with tf.GradientTape() as tape:
+            tape.watch(image)
+            pred = model(image)
+            current_score = extract_class_score(pred, avoid_class)
         
-        # Текущий предсказанный класс
-        current_class = torch.argmax(output).item()
+        print(f"🔁 Iter {iteration+1}/{max_iter}: score={current_score.numpy():.4f}")
         
         # ✅ Успех: ушли от целевого класса
-        if current_class != avoid_class:
+        if current_score < 0.05:
+            print(f"✅ Attack succeeded at iteration {iteration+1}")
             break
         
-        # Softmax для работы с вероятностями
-        probs = F.softmax(output, dim=1)
+        # Градиент для целевого класса
+        grads = tape.gradient(current_score, image)
+        if grads is None or tf.reduce_max(tf.abs(grads)) < 1e-7:
+            print("⚠️ Zero gradients, stopping")
+            break
         
-        # Топ-(num_classes+1) наиболее вероятных классов
-        top_k = min(num_classes + 1, output.shape[1])
-        top_probs, top_indices = torch.topk(probs[0], k=top_k)
+        grad_avoid = grads.numpy().copy()
         
-        # 🔹 Градиент для avoid_class (базовый)
-        output[0, avoid_class].backward(retain_graph=True)
-        grad_orig = pert_image.grad.detach().cpu().numpy().copy()
-        pert_image.grad.zero_()
+        # Получаем все confidence scores для поиска ближайшей границы
+        pred_current = model(image)
+        confidences = pred_current[0, :, 4]  # [N]
+        detected_classes = pred_current[0, :, 5]  # [N]
         
-        pert = np.inf
+        # Построим словарь: class_id -> max_confidence для каждого класса
+        class_scores = {}
+        for detection_idx in range(detected_classes.shape[0]):
+            class_id = int(detected_classes[detection_idx].numpy())
+            conf = float(confidences[detection_idx].numpy())
+            
+            if class_id not in class_scores:
+                class_scores[class_id] = conf
+            else:
+                class_scores[class_id] = max(class_scores[class_id], conf)
+        
+        # Ищем ближайшую границу решения
+        pert_min = np.inf
         w_best = None
+        best_class = None
         
-        # 🔍 Ищем ближайшую границу решения среди других классов
-        for idx in top_indices:
-            k = idx.item()
-            if k == avoid_class:
+        current_score_val = float(current_score.numpy())
+        
+        for class_id in class_scores.keys():
+            if class_id == avoid_class:
                 continue
             
-            # Градиент для класса k
-            output[0, k].backward(retain_graph=True)
-            grad_k = pert_image.grad.detach().cpu().numpy().copy()
-            pert_image.grad.zero_()
+            # Вычисляем градиент для этого класса
+            with tf.GradientTape() as tape_k:
+                tape_k.watch(image)
+                pred_k = model(image)
+                score_k = extract_class_score(pred_k, class_id)
             
-            # Разность градиентов и логитов
-            w_k = grad_k - grad_orig
-            f_k = (output[0, k] - output[0, avoid_class]).detach().cpu().numpy()
+            grad_k = tape_k.gradient(score_k, image)
+            if grad_k is None:
+                continue
+            
+            grad_k_np = grad_k.numpy().copy()
+            
+            # Разность градиентов
+            w_k = grad_k_np - grad_avoid
+            norm_w = np.linalg.norm(w_k.flatten()) + 1e-8
+            
+            if norm_w < 1e-7:
+                continue
+            
+            # Разность confidence scores
+            score_k_val = float(score_k.numpy())
+            f_k = score_k_val - current_score_val
             
             # 📏 Расстояние до границы: |f| / ||w||
-            pert_k = np.abs(f_k) / (np.linalg.norm(w_k.flatten()) + 1e-8)
+            pert_k = np.abs(f_k) / norm_w
             
-            if pert_k < pert:
-                pert = pert_k
+            if pert_k < pert_min:
+                pert_min = pert_k
                 w_best = w_k
+                best_class = class_id
         
-        if w_best is None:
-            break
-            
-        # Вычисляем направление минимального возмущения
-        norm_w = np.linalg.norm(w_best) + 1e-8
-        r_i = (pert + 1e-4) * w_best / norm_w  # +1e-4 для численной стабильности
+        if w_best is None or pert_min == np.inf:
+            print("⚠️ No suitable boundary found, using gradient direction")
+            # Используем только градиент целевого класса
+            w_best = grad_avoid
+            pert_min = 1e-2
+        
+        # Направление минимального возмущения
+        norm_w = np.linalg.norm(w_best.flatten()) + 1e-8
+        r_i = (pert_min + 1e-4) * w_best / norm_w
         r_tot = r_tot + r_i
         
         # Применяем возмущение с overshoot
-        pert_image = image + torch.from_numpy((1 + overshoot) * r_tot).float().to(image.device)
-        pert_image = torch.clamp(pert_image, -3, 3)  # Ограничение значений
+        pert_image = image_tensor + tf.constant((1 + overshoot) * r_tot, dtype=tf.float32)
+        pert_image = tf.clip_by_value(pert_image, 0.0, 1.0)
         
-        loop_i += 1
+        image.assign(pert_image)
     
     # Финальное возмущение с overshoot
     r_tot = (1 + overshoot) * r_tot
-    adv_image = image + torch.from_numpy(r_tot).float().to(image.device)
-    adv_image = torch.clamp(adv_image, -3, 3)
+    adv_image = image_tensor + tf.constant(r_tot, dtype=tf.float32)
+    adv_image = tf.clip_by_value(adv_image, 0.0, 1.0)
     
-    print(f"🔄 DeepFool завершён: {loop_i}/{max_iter} итераций")
-    return adv_image, loop_i
+    print(f"🔄 DeepFool завершён: {iteration+1}/{max_iter} итераций")
+    return adv_image, iteration+1
 
+def save_adversarial_image(img_tensor, meta, output_path):
+    """Сохраняет adversarial изображение в оригинальном размере"""
+    restored_np = unpad_and_restore(img_tensor, meta)
+    Image.fromarray(restored_np).save(output_path)
+    print(f"✅ Adversarial saved: {os.path.abspath(output_path)}")
 
-def avoid_class_deepfool(model, image_path, avoid_class, 
-                         num_classes=10, overshoot=0.02, max_iter=50):
-    """
-    Полный пайплайн атаки:
-    1. Загрузка изображения в оригинальном разрешении
-    2. Ресайз до 224×224 для модели + нормализация
-    3. Применение DeepFool на 224×224
-    4. Интерполяция возмущения обратно к оригинальному размеру
-    5. Возврат нормализованного adversarial изображения
-    """
-    # 📷 1. Загружаем оригинал в полном разрешении
-    original_np, orig_size = load_original_image(image_path)
-    h, w = orig_size[1], orig_size[0]
-    print(f"📷 Исходный размер изображения: {w}x{h}")
-
-    # 🔄 2. Препроцессинг для модели (224×224)
-    image_224, _ = load_and_preprocess_image(image_path, target_size=(224, 224))
-    
-    # 📊 Исходная вероятность целевого класса
-    with torch.no_grad():
-        init_output = model(image_224)
-        init_prob = F.softmax(init_output, dim=1)[0, avoid_class].item()
-    print(f"📉 Исходная вероятность класса {avoid_class}: {init_prob:.4f}")
-
-    # ⚔️ 3. Применяем DeepFool атаку
-    adv_224, n_iter = deepfool_avoid_class(
-        model, image_224, avoid_class, 
-        num_classes=num_classes, 
-        overshoot=overshoot, 
-        max_iter=max_iter
-    )
-    
-    # 🎯 4. ВОЗВРАЩАЕМ ВОЗМУЩЕНИЕ К ОРИГИНАЛЬНОМУ РАЗМЕРУ
-    # Вычисляем только шум (возмущение) на 224×224
-    delta_224 = adv_224 - image_224
-    
-    # Растягиваем шум обратно к оригиналу (bilinear для плавности)
-    delta_full = F.interpolate(delta_224, size=(h, w), 
-                               mode='bilinear', align_corners=False)
-    
-    # Нормализуем оригинал в полном разрешении
-    transform_norm = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=IMAGENET_MEAN.tolist(), 
-                           std=IMAGENET_STD.tolist())
-    ])
-    original_norm = transform_norm(Image.fromarray(original_np)).unsqueeze(0)
-    
-    # Накладываем возмущение на оригинал
-    adv_full = original_norm + delta_full
-    adv_full = torch.clamp(adv_full, -3, 3)  # Ограничение диапазона
-    
-    print(f"✅ Атака завершена. Итоговое изображение: {w}x{h}")
-    return adv_full
-
+# ================== ЗАПУСК ==================
 if __name__ == "__main__":
-    IMAGE_PATH = '../data/test.png'
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        print(f"🖥️ GPU: {[g.name for g in gpus]}")
+
+    print(f"📦 Loading YOLO model: {MODEL_DIR}")
+    yolo_model = load_yolo_keras(MODEL_DIR)
+    print(f"✅ Model: input={yolo_model.input_shape}, output={yolo_model.output_shape}")
+
+    print(f"🚀 Starting DeepFool attack (avoid class {AVOID_CLASS})...")
+    original_tensor, meta = letterbox_preprocess(IMAGE_PATH)
+    print(f"📷 Original: {meta['orig_w']}x{meta['orig_h']}, "
+          f"Resized: {meta['new_w']}x{meta['new_h']}, Pad: T={meta['top']},L={meta['left']}")
     
-    # 🚀 Запуск атаки
-    adversarial_img = avoid_class_deepfool(
-        model, 
-        IMAGE_PATH, 
-        PHONE_CLASS,
-        num_classes=10,      # Сколько соседних классов учитывать
-        overshoot=0.02,      # Стандартное значение из статьи
-        max_iter=50          # Максимум итераций
+    adversarial, n_iter = deepfool_avoid_yolo(
+        model=yolo_model,
+        image_tensor=original_tensor,
+        avoid_class=AVOID_CLASS,
+        num_classes=NUM_CLASSES,
+        overshoot=OVERSHOOT,
+        max_iter=MAX_ITER
     )
     
-    # 💾 Сохранение результата
-    save_adversarial_image(adversarial_img, '../data/adversarial_no_phone_deepfool.png')
+    save_adversarial_image(adversarial, meta, OUTPUT_PATH)
     
-    # 🔍 Проверка: классификация после атаки
-    with torch.no_grad():
-        adv_224, _ = load_and_preprocess_image(
-            '../data/adversarial_no_phone_deepfool.png', 
-            target_size=(224, 224)
-        )
-        output = model(adv_224)
-        probs = F.softmax(output, dim=1)
-        
-        pred_class = torch.argmax(probs).item()
-        pred_prob = probs[0, pred_class].item()
-        phone_prob = probs[0, PHONE_CLASS].item()
-
-    
-    detect(input_path='test.png')
-    detect(input_path='adversarial_no_phone_deepfool.png')
+    print("\n🔍 Проверка детекции:")
+    detect(IMAGE_PATH)
+    detect(OUTPUT_PATH)
