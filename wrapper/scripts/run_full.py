@@ -2,8 +2,8 @@
 import sys
 import argparse
 from pathlib import Path
-from config import load_config
-from attack_eval import AttackEvaluator
+from utils.config import load_config
+from evaluation.attack_eval import AttackEvaluator
 import json
 
 

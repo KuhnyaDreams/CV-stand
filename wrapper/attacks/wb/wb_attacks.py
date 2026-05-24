@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Optional,  Union, Tuple
 import logging
-from base_attacks import AttackBase
+from attacks.base_attacks import AttackBase
 import tensorflow as tf
 import matplotlib.pyplot as plt
 logger = logging.getLogger(__name__)

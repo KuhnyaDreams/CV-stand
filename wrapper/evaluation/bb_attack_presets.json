@@ -1,0 +1,50 @@
+{
+  "gaussian_blur_attack": {
+    "light": { "kernel_size": 9 },
+    "medium": { "kernel_size": 15 },
+    "strong": { "kernel_size": 21 }
+  },
+  "motion_blur_attack": {
+    "light": { "kernel_size": 11, "angle_degrees": 0 },
+    "medium": { "kernel_size": 17, "angle_degrees": 10 },
+    "strong": { "kernel_size": 23, "angle_degrees": 15 }
+  },
+  "random_noise_attack": {
+    "light": { "noise_level": 0.1 },
+    "medium": { "noise_level": 0.18 },
+    "strong": { "noise_level": 0.28 }
+  },
+  "low_light_attack": {
+    "light": { "brightness_factor": 0.45, "noise_level": 0.08 },
+    "medium": { "brightness_factor": 0.3, "noise_level": 0.14 },
+    "strong": { "brightness_factor": 0.2, "noise_level": 0.2 }
+  },
+  "brightness_attack": {
+    "light": { "factor": 0.6 },
+    "medium": { "factor": 0.4 },
+    "strong": { "factor": 0.25 }
+  },
+  "contrast_attack": {
+    "light": { "factor": 0.6 },
+    "medium": { "factor": 0.4 },
+    "strong": { "factor": 0.25 }
+  },
+  "compression_attack": {
+    "light": { "jpeg_quality": 25 },
+    "medium": { "jpeg_quality": 15 },
+    "strong": { "jpeg_quality": 8 }
+  },
+  "downscale_upscale_attack": {
+    "light": { "scale_factor": 0.4 },
+    "medium": { "scale_factor": 0.25 },
+    "strong": { "scale_factor": 0.15 }
+  },
+  "frame_drop_attack": {
+    "light": { "drop_every_n": 5 },
+    "medium": { "drop_every_n": 4 },
+    "strong": { "drop_every_n": 3 }
+  },
+  "blackout_attack": {
+    "reference": {}
+  }
+}

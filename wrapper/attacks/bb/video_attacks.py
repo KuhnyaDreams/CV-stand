@@ -3,8 +3,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from bb_attacks import BlackBoxAttacks
-from io_utils import read_video_frames, write_video
+from attacks.bb.bb_attacks import BlackBoxAttacks
+from utils.io_utils import read_video_frames, write_video
 
 
 class VideoBlackBoxAttacks:

@@ -13,12 +13,18 @@ import logging
 import os
 import shutil
 
-from model_functions import detect
-from bb_attacks import BlackBoxAttacks
-from wb_attacks import WhiteBoxAttacks
-from path_utils import PathManager
+from api.model_functions import detect
+from attacks.bb.bb_attacks import BlackBoxAttacks
+from utils.path_utils import PathManager
 
 logger = logging.getLogger(__name__)
+
+try:
+    from attacks.wb.wb_attacks import WhiteBoxAttacks
+    WHITE_BOX_IMPORT_ERROR = None
+except Exception as exc:
+    WhiteBoxAttacks = None
+    WHITE_BOX_IMPORT_ERROR = exc
 
 
 class AttackExecutor:
@@ -159,6 +165,21 @@ class AttackEvaluator:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         self.executor = AttackExecutor(config)
         logger.info(f"Initialized AttackEvaluator with output_dir: {output_dir}")
+
+    def _create_white_box_handler(self):
+        """
+        Create the white-box handler only when it is actually needed.
+
+        This keeps the black-box image pipeline usable even when optional
+        white-box dependencies such as TensorFlow are not installed.
+        """
+        if WhiteBoxAttacks is None:
+            raise ImportError(
+                "White-box attacks are unavailable because optional dependencies "
+                "could not be imported."
+            ) from WHITE_BOX_IMPORT_ERROR
+
+        return WhiteBoxAttacks(self.config)
     
     def run_comprehensive_test(self, image_path: str) -> Dict:
         """
@@ -205,7 +226,7 @@ class AttackEvaluator:
         wb_results = self._run_attack_suite(
             img_rgb,
             self.WHITE_BOX_ATTACKS,
-            WhiteBoxAttacks(self.config),
+            self._create_white_box_handler(),
             'white_box',
             baseline_count,
             attack_output,
@@ -353,7 +374,7 @@ class AttackEvaluator:
 
         # Choose handler
         if attack_type == 'white_box':
-            handler = WhiteBoxAttacks(self.config)
+            handler = self._create_white_box_handler()
             mapping = self.WHITE_BOX_ATTACKS
         elif attack_type == 'black_box':
             handler = BlackBoxAttacks(self.config)

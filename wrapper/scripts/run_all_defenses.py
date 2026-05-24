@@ -1,9 +1,10 @@
-from model_functions import detect
-from bb_attacks import BlackBoxAttacks
-from adaptive_defense import AdaptiveDefense
-from attack_classifier import AttackClassifier
-from path_utils import PathManager
+from api.model_functions import detect
+from attacks.bb.bb_attacks import BlackBoxAttacks
+from defenses.adaptive_defense import AdaptiveDefense
+from defenses.attack_classifier import AttackClassifier
+from utils.path_utils import PathManager
 
+import argparse
 import cv2
 import os
 import time
@@ -87,7 +88,21 @@ def run_attack_and_defense(image_path: str, attack_name: str = "patch"):
 
 
 
-run_attack_and_defense(
-    "results/photo2.jpg",
-    attack_name="perspective"
-)
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Apply one attack, classify it, run the matching defense, and evaluate the result.",
+    )
+    parser.add_argument("image", help="Path to the input image.")
+    parser.add_argument(
+        "--attack",
+        default="perspective",
+        choices=sorted(ATTACK_MAP.keys()),
+        help="Attack family to apply before the defense step.",
+    )
+    args = parser.parse_args()
+
+    run_attack_and_defense(args.image, attack_name=args.attack)
+
+
+if __name__ == "__main__":
+    main()

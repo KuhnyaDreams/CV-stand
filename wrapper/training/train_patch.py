@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from learned_patch import LearnedPatchTrainer, PatchTrainingConfig
+from training.learned_patch import LearnedPatchTrainer, PatchTrainingConfig
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}

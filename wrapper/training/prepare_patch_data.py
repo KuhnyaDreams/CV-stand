@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from io_utils import (
+from utils.io_utils import (
     DEFAULT_DATA_DIR,
     VIDEO_EXTENSIONS,
     ensure_dir,

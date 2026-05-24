@@ -78,7 +78,7 @@ def find_image_path(filename: str = "test.jpg") -> str:
     Raises:
         FileNotFoundError: If image not found
     """
-    from path_utils import PathManager
+    from utils.path_utils import PathManager
     
     try:
         return PathManager.find_image(filename)

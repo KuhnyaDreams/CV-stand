@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
-from defense import Defenses
-from attack_classifier import AttackClassifier  
+from defenses.defense import Defenses
+from defenses.attack_classifier import AttackClassifier
 
 
 class AdaptiveDefense:

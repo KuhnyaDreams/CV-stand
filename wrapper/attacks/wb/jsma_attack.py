@@ -223,6 +223,6 @@ if __name__ == "__main__":
     print("\n💡 Verify: from ultralytics import YOLO; YOLO('...').predict('adversarial_no_phone.png')")
     
     
-    from model_functions import detect
+    from api.model_functions import detect
     detect(IMAGE_PATH)
     detect(OUTPUT_PATH)

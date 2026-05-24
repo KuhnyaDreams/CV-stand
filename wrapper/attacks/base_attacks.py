@@ -8,8 +8,8 @@ from typing import Any, Optional
 from abc import ABC
 import logging
 
-from config_validator import ConfigValidator
-from path_utils import PathManager
+from utils.config_validator import ConfigValidator
+from utils.path_utils import PathManager
 
 logger = logging.getLogger(__name__)
 

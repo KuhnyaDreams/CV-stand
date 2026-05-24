@@ -1,6 +1,6 @@
-from io_utils import read_video_frames, write_video
-from adaptive_defense import AdaptiveDefense
-from attack_classifier import AttackClassifier
+from utils.io_utils import read_video_frames, write_video
+from defenses.adaptive_defense import AdaptiveDefense
+from defenses.attack_classifier import AttackClassifier
 
 
 def defend_attacked_video(

@@ -3,7 +3,7 @@ import keras
 import numpy as np
 from PIL import Image
 import os
-from model_functions import detect
+from api.model_functions import detect
 
 # ================== КОНФИГУРАЦИЯ ==================
 MODEL_DIR = "../core/yolo26n_saved_model"
