@@ -8,22 +8,23 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 
 
-# Расширения, которые считаем изображениями.
+# File extensions treated as images.
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
-# Расширения, которые считаем видео.
+# File extensions treated as videos.
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".webm"}
 
 
 def get_media_type(path: str) -> str:
     """
-    Определяет тип медиа по расширению файла.
+    Determine media type from the file extension.
 
-    Возвращает:
-    - "image" для изображений
-    - "video" для видео
+    Returns:
+    - "image" for still images
+    - "video" for video files
 
-    Если расширение неизвестно, выбрасывает ValueError.
+    Raises:
+        ValueError: If the extension is not supported.
     """
     suffix = Path(path).suffix.lower()
 
@@ -37,9 +38,9 @@ def get_media_type(path: str) -> str:
 
 def ensure_dir(path: str | Path) -> Path:
     """
-    Создает директорию, если ее еще нет.
+    Create a directory if it does not exist yet.
 
-    Удобно использовать перед сохранением результатов или временных файлов.
+    This is useful before saving results or temporary files.
     """
     directory = Path(path)
     directory.mkdir(parents=True, exist_ok=True)
@@ -48,10 +49,10 @@ def ensure_dir(path: str | Path) -> Path:
 
 def make_temp_filename(prefix: str, suffix: str) -> str:
     """
-    Создает уникальное имя временного файла.
+    Create a unique temporary filename.
 
-    Пример:
-    attack_20260416_120530.mp4
+    Example:
+        attack_20260416_120530.mp4
     """
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     return f"{prefix}_{timestamp}{suffix}"
@@ -59,10 +60,10 @@ def make_temp_filename(prefix: str, suffix: str) -> str:
 
 def make_data_temp_path(filename: str, data_dir: str | Path = DEFAULT_DATA_DIR) -> Path:
     """
-    Возвращает путь внутри локальной папки data/.
+    Return a path inside the local data/ directory.
 
-    Именно в эту папку удобно сохранять временные attacked-файлы,
-    потому что потом core-сервис видит их как /data/<filename>.
+    Temporary attacked files are stored here so the core service can access
+    them inside the container as /data/<filename>.
     """
     data_path = ensure_dir(data_dir)
     return data_path / filename
@@ -70,11 +71,11 @@ def make_data_temp_path(filename: str, data_dir: str | Path = DEFAULT_DATA_DIR) 
 
 def load_image(path: str | Path, rgb: bool = True):
     """
-    Загружает изображение с диска.
+    Load an image from disk.
 
-    OpenCV читает изображения в формате BGR.
-    Если rgb=True, сразу переводим его в RGB, потому что так удобнее
-    работать в attack-пайплайне и с numpy-массивами.
+    OpenCV reads images in BGR format. If rgb=True, convert it immediately to
+    RGB because that is more convenient for the attack pipeline and numpy-based
+    image operations.
     """
     image = cv2.imread(str(path))
     if image is None:
@@ -87,10 +88,10 @@ def load_image(path: str | Path, rgb: bool = True):
 
 def save_image(path: str | Path, image, rgb: bool = True) -> Path:
     """
-    Сохраняет изображение на диск.
+    Save an image to disk.
 
-    Если входной массив находится в RGB, переводим его обратно в BGR,
-    потому что OpenCV сохраняет изображения именно в BGR-представлении.
+    If the input array is in RGB format, convert it back to BGR because OpenCV
+    writes image files in BGR order.
     """
     output_path = Path(path)
     ensure_dir(output_path.parent)
@@ -108,13 +109,13 @@ def save_image(path: str | Path, image, rgb: bool = True) -> Path:
 
 def get_video_info(path: str | Path) -> dict:
     """
-    Возвращает базовую информацию о видео.
+    Return basic metadata for a video file.
 
-    Это полезно для evaluator и video-атак:
+    This is useful for evaluators and video attacks because it exposes:
     - fps
-    - число кадров
-    - размер кадра
-    - примерная длительность
+    - frame count
+    - frame size
+    - approximate duration
     """
     video_path = Path(path)
     capture = cv2.VideoCapture(str(video_path))
@@ -143,17 +144,17 @@ def get_video_info(path: str | Path) -> dict:
 
 def read_video_frames(path: str | Path, rgb: bool = True) -> tuple[list, dict]:
     """
-    Считывает все кадры видео в список и одновременно возвращает metadata.
+    Read all video frames into a list and return metadata alongside them.
 
-    Это базовая функция для video attacks:
-    1. открываем исходный ролик
-    2. получаем его кадры
-    3. применяем атаку к каждому кадру
-    4. потом собираем новое видео через write_video(...)
+    This is the base helper for video attacks:
+    1. open the source video
+    2. read its frames
+    3. apply an attack to each frame
+    4. assemble the attacked video through write_video(...)
 
-    Параметр rgb работает так же, как и для изображений:
-    - если rgb=True, переводим каждый кадр из BGR в RGB
-    - если rgb=False, оставляем кадры в формате OpenCV (BGR)
+    The rgb flag behaves the same way as it does for images:
+    - if rgb=True, convert each frame from BGR to RGB
+    - if rgb=False, keep frames in OpenCV's native BGR format
     """
     video_path = Path(path)
     capture = cv2.VideoCapture(str(video_path))
@@ -161,7 +162,7 @@ def read_video_frames(path: str | Path, rgb: bool = True) -> tuple[list, dict]:
     if not capture.isOpened():
         raise ValueError(f"Cannot open video: {video_path}")
 
-    # Metadata сразу считываем из видео, чтобы потом не вычислять ее отдельно.
+    # Read metadata upfront so it does not need to be recomputed later.
     fps = capture.get(cv2.CAP_PROP_FPS)
     frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
     width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -205,21 +206,21 @@ def write_video(
     codec: str = "mp4v",
 ) -> Path:
     """
-    Собирает видео из списка кадров и сохраняет его на диск.
+    Assemble a video from a list of frames and save it to disk.
 
-    Эта функция нужна после того, как мы уже обработали кадры атакой.
-    Например:
-    - считали видео через read_video_frames(...)
-    - применили blur к каждому кадру
-    - вызвали write_video(...) и получили attacked video
+    This helper is used after attack processing, for example:
+    - read a video with read_video_frames(...)
+    - apply blur to each frame
+    - call write_video(...) to create the attacked video
 
-    Параметры:
-    - path: куда сохранить видео
-    - frames: список кадров одинакового размера
-    - fps: частота кадров исходного или нового видео
-    - width, height: размер кадра
-    - rgb: если кадры в RGB, перед сохранением переведем их в BGR
-    - codec: fourcc-кодек для VideoWriter
+    Args:
+        path: Output path for the video
+        frames: List of frames with a consistent size
+        fps: Frame rate for the output video
+        width: Frame width
+        height: Frame height
+        rgb: Convert frames from RGB to BGR before writing if needed
+        codec: fourcc codec passed to VideoWriter
     """
     output_path = Path(path)
     ensure_dir(output_path.parent)
@@ -235,8 +236,7 @@ def write_video(
 
     try:
         for frame in frames:
-            # На всякий случай контролируем размер кадра.
-            # Это полезно, потому что после некоторых атак размер может случайно измениться.
+            # Enforce frame size in case an attack changed it accidentally.
             if frame.shape[1] != width or frame.shape[0] != height:
                 frame = cv2.resize(frame, (width, height))
 
@@ -270,7 +270,7 @@ def extract_video_frames_to_images(
         output_dir: Directory where extracted frames should be saved
         every_n_frames: Save every N-th frame
         max_frames: Optional hard limit on how many images to save
-        prefix: Optional filename prefix. Defaults to video stem.
+        prefix: Optional filename prefix. Defaults to the video stem
         rgb: Whether read_video_frames should return RGB frames
 
     Returns:

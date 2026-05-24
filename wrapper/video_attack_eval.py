@@ -423,7 +423,7 @@ class VideoAttackEvaluator:
         defense_stats = {
             "total_frames": len(frames),
             "processed_frames": 0,
-            "detections": {}  # динамический словарь
+            "detections": {}  # Populated dynamically as attack types are detected.
         }
         
         defended_frames = []

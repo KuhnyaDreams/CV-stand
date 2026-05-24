@@ -558,7 +558,7 @@ class BlackBoxAttacks(AttackBase):
         self.validate_image(image)
         h, w = image.shape[:2]
         
-        # 🎨 Загрузка параметров по умолчанию
+        # Load default parameters when explicit values are not provided.
         if patch_size is None or patch_color is None:
             patch_config = self.config.get('black_box_attacks', {}).get('patch', {})
             if not isinstance(patch_config, dict):
@@ -569,14 +569,14 @@ class BlackBoxAttacks(AttackBase):
         
         patch_placements = []
         
-        # 🎯 Обработка координат и размеров
+        # Resolve placement coordinates and patch sizes.
         if patch_coordinates is not None and isinstance(patch_coordinates, list) and len(patch_coordinates) > 0:
             for item in patch_coordinates:
                 if isinstance(item, dict) and "x" in item and "y" in item:
                     size = item.get("size", patch_size if isinstance(patch_size, int) else 32)
                     patch_placements.append({
                         "x": item["x"], "y": item["y"], "size": size,
-                        "is_center": item.get("is_center", False)  # 🔥 новый флаг
+                        "is_center": item.get("is_center", False),  # Interpret x/y as patch center when requested.
                     })
         
         elif patch_coordinates is not None and isinstance(patch_coordinates, tuple):
@@ -585,7 +585,7 @@ class BlackBoxAttacks(AttackBase):
             patch_placements.append({"x": x, "y": y, "size": size, "is_center": False})
         
         elif detection_result is not None and target_class is not None:
-            # 🔍 Авто-извлечение из детекции
+            # Derive patch placement from detection output.
             coords_info = extract_attack_coordinates(
                 detection_result=detection_result,
                 strategy=patch_strategy,
@@ -595,22 +595,22 @@ class BlackBoxAttacks(AttackBase):
                 patch_size_value=patch_size_ratio if patch_size == "auto" else (patch_size if isinstance(patch_size, int) else 32)
             )
             for info in coords_info:
-                # 🔥 Гарантируем, что координаты интерпретируются как ЦЕНТР объекта
+                # Treat extracted coordinates as object centers.
                 patch_placements.append({
                     "x": info["x"],
                     "y": info["y"], 
                     "size": info["size"],
-                    "is_center": True  # 🔥 Ключевое исправление
+                    "is_center": True,
                 })
         
         else:
-            # 🎲 Случайное размещение
+            # Fall back to random placement when no coordinates were provided.
             size = patch_size if isinstance(patch_size, int) else 32
             y_start = np.random.randint(0, max(1, h - size))
             x_start = np.random.randint(0, max(1, w - size))
             patch_placements.append({"x": x_start, "y": y_start, "size": size, "is_center": False})
         
-        # 🖌️ Применение патчей
+        # Apply all requested patches.
         adversarial = image.copy()
         applied_patches = []
         
@@ -618,7 +618,7 @@ class BlackBoxAttacks(AttackBase):
             x, y, size = placement["x"], placement["y"], placement["size"]
             is_center = placement.get("is_center", False)
             
-            # 🔥 Центрируем патч, если координаты указывают на центр объекта
+            # Center the patch when the coordinates refer to the object center.
             if is_center:
                 x_start = int(round(x - size / 2))
                 y_start = int(round(y - size / 2))
@@ -626,7 +626,7 @@ class BlackBoxAttacks(AttackBase):
                 x_start = int(x)
                 y_start = int(y)
 
-            # Корректировка границ с учётом возможного отрицательного смещения
+            # Clamp patch bounds in case centering produces negative offsets.
             x_start = max(0, min(x_start, w - 1))
             y_start = max(0, min(y_start, h - 1))
             x_end = min(x_start + size, w)

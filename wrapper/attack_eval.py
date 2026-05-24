@@ -190,7 +190,7 @@ class AttackEvaluator:
         print("\n[1/3] Getting baseline detections...")
         baseline = detect(image_filename)
         baseline_count = self._extract_detection_count(baseline)
-        print(f"  ✓ Baseline detections: {baseline_count}")
+        print(f"  [OK] Baseline detections: {baseline_count}")
         
         # Prepare output directory
         timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -275,7 +275,7 @@ class AttackEvaluator:
         
         for idx, (method_name, display_name) in enumerate(attacks.items(), 1):
             try:
-                print(f"  ├─ {display_name} attack...", end="", flush=True)
+                print(f"  |- {display_name} attack...", end="", flush=True)
                 
                 # Get attack method
                 attack_func = getattr(attack_handler, method_name, None)
@@ -312,11 +312,11 @@ class AttackEvaluator:
                     'api_result': detection_result
                 }
                 
-                print(f" ✓ ({adv_count} detections)")
+                print(f" [OK] ({adv_count} detections)")
                 
             except Exception as e:
                 logger.error(f"Error in {display_name}: {e}")
-                print(f" ✗ ({str(e)})")
+                print(f" [ERROR] ({str(e)})")
                 results[display_name] = {'error': str(e)}
         
         return results
