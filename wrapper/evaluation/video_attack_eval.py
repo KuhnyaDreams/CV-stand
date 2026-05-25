@@ -427,10 +427,14 @@ class VideoAttackEvaluator:
         }
         
         defended_frames = []
+        prev_frame_for_classification = None
         
         for idx, frame in enumerate(frames):
             if idx % frame_skip == 0:
-                attack_type = AttackClassifier.classify(frame)
+                attack_type = AttackClassifier.classify(
+                    frame,
+                    prev_frame=prev_frame_for_classification,
+                )
                 if attack_type not in defense_stats["detections"]:
                     defense_stats["detections"][attack_type] = 0
                 defense_stats["detections"][attack_type] += 1
@@ -443,6 +447,7 @@ class VideoAttackEvaluator:
                 defended_frame = frame
             
             defended_frames.append(defended_frame)
+            prev_frame_for_classification = frame
         
         # Save defended video
         defended_filename = make_temp_filename(

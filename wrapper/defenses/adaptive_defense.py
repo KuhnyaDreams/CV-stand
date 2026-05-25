@@ -8,7 +8,7 @@ class AdaptiveDefense:
 
     def apply_with_type(self, image, attack_type: str):
 
-        if attack_type == "noise":
+        if attack_type in {"noise", "random_noise"}:
             return Defenses.denoise(
                 image,
                 h=18,
@@ -19,8 +19,20 @@ class AdaptiveDefense:
         elif attack_type == "patch":
             return Defenses.jpeg_compression(image, quality=50)
 
-        elif attack_type == "blur":
+        elif attack_type in {"blur", "gaussian_blur", "motion_blur"}:
             return Defenses.normalize_lighting(image)
+
+        elif attack_type in {"brightness", "low_light", "contrast"}:
+            return Defenses.normalize_lighting(image)
+
+        elif attack_type == "compression":
+            return Defenses.jpeg_compression(image, quality=70)
+
+        elif attack_type == "downscale_upscale":
+            return Defenses.random_resize(image, scale_range=(0.9, 1.1))
+
+        elif attack_type == "frame_drop":
+            return image
 
         elif attack_type == "single_pixel":
             return Defenses.gaussian_blur(image, kernel_size=3)

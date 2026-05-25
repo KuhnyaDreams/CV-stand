@@ -23,12 +23,16 @@ def defend_attacked_video(
     }
     
     defended_frames = []
+    prev_frame_for_classification = None
     
     print(f"Processing video: {len(frames)} frames")
     
     for idx, frame in enumerate(frames):
         if idx % frame_skip == 0:
-            attack_type = AttackClassifier.classify(frame)
+            attack_type = AttackClassifier.classify(
+                frame,
+                prev_frame=prev_frame_for_classification,
+            )
             
             # Динамическое добавление новых типов атак
             if attack_type not in stats["detections"]:
@@ -44,6 +48,7 @@ def defend_attacked_video(
             defended_frame = frame
         
         defended_frames.append(defended_frame)
+        prev_frame_for_classification = frame
     
     if output_video_path:
         write_video(

@@ -16,6 +16,7 @@ MODULES = [
     "evaluation.attack_presets",
     "evaluation.attack_eval",
     "evaluation.generate_attack_presentation",
+    "evaluation.run_image_patch_experiments",
     "evaluation.video_attack_eval",
     "training.learned_patch",
     "training.prepare_patch_data",
