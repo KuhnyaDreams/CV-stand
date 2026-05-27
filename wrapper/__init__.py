@@ -1,6 +1,8 @@
 """
 Wrapper module for adversarial attack evaluation.
+
 Provides attack implementations, evaluation framework, and utility functions.
+Coordinates components for working with adversarial examples, defenses, and effectiveness evaluation.
 """
 
 import logging

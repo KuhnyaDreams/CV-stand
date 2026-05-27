@@ -1,12 +1,42 @@
+"""
+Adaptive defense against adversarial attacks based on attack classification.
+
+Module provides AdaptiveDefense class that:
+- Determines attack type on an image
+- Automatically applies appropriate defense
+"""
+
 import numpy as np
 import cv2
 from defense import Defenses
-from attack_classifier import AttackClassifier  
+from attack_classifier import AttackClassifier
 
 
 class AdaptiveDefense:
+    """
+    Adaptive defense class against various types of adversarial attacks.
+
+    Uses attack classification to determine optimal defense:
+    - noise -> denoising
+    - patch -> JPEG compression
+    - blur -> lighting normalization
+    - single_pixel -> Gaussian blur
+    - rotation -> inverse rotation
+    - perspective -> perspective correction
+    """
 
     def apply_with_type(self, image, attack_type: str):
+        """
+        Apply defense based on detected attack type.
+
+        Args:
+            image: Input image as numpy array (BGR)
+            attack_type: Attack type ('noise', 'patch', 'blur', 'single_pixel',
+                                    'rotation', 'perspective', etc.)
+
+        Returns:
+            numpy.ndarray: Defended image
+        """
 
         if attack_type == "noise":
             return Defenses.denoise(
@@ -58,6 +88,15 @@ class AdaptiveDefense:
             return Defenses.combined(image)
 
     def apply(self, image):
-        attack_type = AttackClassifier.classify(image)  
+        """
+        Automatically detect attack type and apply appropriate defense.
+
+        Args:
+            image: Input image
+
+        Returns:
+            numpy.ndarray: Defended image
+        """
+        attack_type = AttackClassifier.classify(image)
         print(f"[INFO] Detected attack: {attack_type}")
         return self.apply_with_type(image, attack_type)

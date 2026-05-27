@@ -1,6 +1,7 @@
 """
-Configuration management and initialization.
-Handles loading and providing access to configuration parameters.
+Управление конфигурацией и инициализацией.
+
+Обеспечивает загрузку и доступ к параметрам конфигурации из YAML-файла.
 """
 
 from pathlib import Path
@@ -10,52 +11,52 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Global configuration instance
+# Глобальный экземпляр конфигурации
 _CONFIG: Optional[Dict] = None
 
 
 def load_config(config_path: str = "config.yaml") -> Dict:
     """
-    Load configuration from YAML file.
+    Загружает конфигурацию из YAML-файла.
     
     Args:
-        config_path: Path to configuration file
-        
+        config_path: Путь к файлу конфигурации
+    
     Returns:
-        Configuration dictionary
+        dict: Словарь конфигурации
     """
     global _CONFIG
     
     try:
         config_file = Path(config_path)
         if not config_file.exists():
-            logger.warning(f"Config file not found: {config_path}")
-            logger.info("Using default parameters...")
+            logger.warning(f"Файл конфигурации не найден: {config_path}")
+            logger.info("Используются параметры по умолчанию...")
             _CONFIG = {}
             return _CONFIG
         
         with open(config_file, 'r') as f:
             _CONFIG = yaml.safe_load(f)
-            logger.info(f"Loaded config from: {config_path}")
+            logger.info(f"Конфигурация загружена из: {config_path}")
             return _CONFIG
     
     except yaml.YAMLError as e:
-        logger.error(f"YAML parsing error in {config_path}: {e}")
+        logger.error(f"Ошибка парсинга YAML в {config_path}: {e}")
         _CONFIG = {}
         return _CONFIG
     
     except Exception as e:
-        logger.error(f"Error loading config: {e}")
+        logger.error(f"Ошибка загрузки конфигурации: {e}")
         _CONFIG = {}
         return _CONFIG
 
 
 def get_config() -> Dict:
     """
-    Get current configuration (load if not already loaded).
+    Получает текущую конфигурацию (загружает, если ещё не загружена).
     
     Returns:
-        Configuration dictionary
+        dict: Словарь конфигурации
     """
     global _CONFIG
     
@@ -67,16 +68,16 @@ def get_config() -> Dict:
 
 def find_image_path(filename: str = "test.jpg") -> str:
     """
-    Find image path by searching common locations.
+    Находит путь к изображению по названию файла, ища в типичных местах.
     
     Args:
-        filename: Image filename to search for
-        
+        filename: Имя файла изображения
+    
     Returns:
-        Path to image file
-        
+        str: Путь к файлу изображения
+    
     Raises:
-        FileNotFoundError: If image not found
+        FileNotFoundError: Если изображение не найдено
     """
     from path_utils import PathManager
     

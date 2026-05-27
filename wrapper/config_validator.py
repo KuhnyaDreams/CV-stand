@@ -1,6 +1,7 @@
 """
-Configuration validation and management.
-Ensures configuration has correct structure before use.
+Валидация и управление конфигурацией.
+
+Проверяет, что конфигурация имеет правильную структуру перед использованием.
 """
 
 from typing import Dict, Any, Optional, Union
@@ -10,9 +11,14 @@ logger = logging.getLogger(__name__)
 
 
 class ConfigValidator:
-    """Validates and manages configuration structure."""
+    """
+    Класс для валидации и управления структурой конфигурации.
     
-    # Define required configuration schema
+    Обеспечивает проверку требуемых разделов и параметров,
+    предоставляет параметры по умолчанию для всех компонентов.
+    """
+    
+    # Определяем требуемые разделы конфигурации
     REQUIRED_SECTIONS = {
         'white_box_attacks': [
             'fgsm',
@@ -56,28 +62,28 @@ class ConfigValidator:
     @staticmethod
     def validate(config: Dict[str, Any]) -> None:
         """
-        Validate configuration structure.
+        Проверяет корректность структуры конфигурации.
         
         Args:
-            config: Configuration dictionary to validate
-            
+            config: Словарь конфигурации для проверки
+        
         Raises:
-            ValueError: If configuration is invalid
+            ValueError: Если конфигурация некорректна
         """
         if not isinstance(config, dict):
-            raise ValueError(f"Config must be a dictionary, got {type(config)}")
+            raise ValueError(f"Конфигурация должна быть словарём, получена {type(config)}")
         
         for section, required_keys in ConfigValidator.REQUIRED_SECTIONS.items():
             if section not in config:
-                raise ValueError(f"Config missing required section: '{section}'")
+                raise ValueError(f"Конфигурация не содержит требуемый раздел: '{section}'")
             
             if not isinstance(config[section], dict):
                 raise ValueError(
-                    f"Config['{section}'] must be a dictionary, "
-                    f"got {type(config[section])}"
+                    f"Config['{section}'] должен быть словарём, "
+                    f"получен {type(config[section])}"
                 )
             
-            logger.debug(f"✓ Config section '{section}' is valid")
+            logger.debug(f"Раздел конфигурации '{section}' корректен")
     
     @staticmethod
     def get_param(

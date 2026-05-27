@@ -1,6 +1,8 @@
 """
-API wrapper for core CV services.
-Provides unified interface to detect, segment, classify, and estimate tasks.
+API-обёртка для сервисов компьютерного зрения.
+
+Предоставляет единый интерфейс к операциям обнаружения, сегментации,
+классификации и оценки задач.
 """
 
 import time
@@ -12,9 +14,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# API configuration
+# Конфигурация API
 CORE_URL = os.getenv("CORE_URL", "http://localhost:8000")
-REQUEST_TIMEOUT = 30  # seconds
+REQUEST_TIMEOUT = 30  # секунды
 
 
 def _call_core(
@@ -25,31 +27,31 @@ def _call_core(
     show_boxes: bool = False
 ) -> Optional[Dict[str, Any]]:
     """
-    Universal API call to core service.
+    Универсальный API-вызов к core-сервису.
     
     Args:
-        task: Task type ('detect', 'segment', 'classify', 'estimate')
-        input_path: Input image path
-        class_names: Optional class names filter
-        save_images: Whether to save result images
-        show_boxes: Whether to show bounding boxes
-        
+        task: Тип задачи ('detect', 'segment', 'classify', 'estimate')
+        input_path: Путь к входному изображению
+        class_names: Опциональный фильтр по названиям классов
+        save_images: Сохранить ли результирующие изображения
+        show_boxes: Показать ли ограничивающие боксы
+    
     Returns:
-        API response dictionary or None on error
-        
+        dict: Ответ API или None при ошибке
+    
     Raises:
-        ValueError: If task type is unknown
+        ValueError: Если тип задачи неизвестен
     """
-    # Validate task
+    # Проверяем тип задачи
     valid_tasks = {'detect', 'estimate', 'segment', 'classify'}
     if task not in valid_tasks:
-        raise ValueError(f"Unknown task: {task}. Must be one of: {valid_tasks}")
+        raise ValueError(f"Неизвестный тип задачи: {task}. Должен быть один из: {valid_tasks}")
     
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     path = Path(input_path)
     name = path.stem
     
-    # Map task to output subdirectory
+    # Маппинг задачи к поддиректории результатов
     output_subdir = {
         'detect': 'detection',
         'estimate': 'estimation',
@@ -57,7 +59,7 @@ def _call_core(
         'classify': 'classification',
     }.get(task, 'unknown')
     
-    # Build request parameters
+    # Формируем параметры запроса
     params = {
         "input_path": f"/data/{input_path}",
         "output_path": f"/results/{output_subdir}/{timestamp}-{name}",
@@ -66,11 +68,11 @@ def _call_core(
         "show_boxes": show_boxes,
     }
     
-    # Add class names for detection and segmentation only
+    # Добавляем названия классов только для detect и segment
     if task in ['detect', 'segment']:
         params["class_names"] = class_names
     
-    logger.info(f"Calling {task} API: {CORE_URL}/{task}")
+    logger.info(f"Вызов {task} API: {CORE_URL}/{task}")
     
     try:
         response = requests.post(

@@ -1,16 +1,43 @@
+"""
+Классификатор типов adversarial атак на основе анализа изображения.
+
+Модуль предоставляет методы для определения типа атаки, применённой к изображению,
+на основе анализа его статистических свойств и структурных характеристик.
+"""
+
 import numpy as np
 import cv2
 
 
 class AttackClassifier:
+    """
+    Классификатор для определения типа adversarial атаки на изображении.
+    
+    Использует комбинацию методов анализа изображений:
+    - статистический анализ (среднее, дисперсия)
+    - анализ границ и краёв (Canny, Laplacian)
+    - детектирование линий (Hough)
+    - анализ шума
+    """
 
     @staticmethod
     def classify(image: np.ndarray, debug: bool = False) -> str:
+        """
+        Определяет тип атаки на изображении.
+        
+        Args:
+            image: Входное изображение (BGR или граждане)
+            debug: Если True, выводит отладочную информацию
+        
+        Returns:
+            str: Тип обнаруженной атаки ('blackout', 'single_pixel', 'noise',
+                 'blur', 'brightness', 'contrast', 'rotation', 'perspective' и т.д.)
+        """
 
         if image is None:
             return "unknown"
 
-        # grayscale
+        # Конвертируем в оттенки серого для анализа
         if len(image.shape) == 3 and image.shape[2] == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         elif len(image.shape) == 3 and image.shape[2] == 4:
@@ -21,9 +48,7 @@ class AttackClassifier:
         h, w = gray.shape[:2]
         img_area = h * w
 
-        # -----------------------------
-        # базовые метрики
-        # -----------------------------
+        # Расчёт базовых метрик
         mean_val = np.mean(gray)
         std_val = np.std(gray)
         variance = np.var(gray)
@@ -33,64 +58,49 @@ class AttackClassifier:
         edges = cv2.Canny(gray, 100, 200)
         edge_ratio = np.count_nonzero(edges) / edges.size
 
-        # разница с размытием (для шума)
+        # Разница с размытием (для определения шума)
         blurred = cv2.GaussianBlur(gray, (3, 3), 0)
         diff = cv2.absdiff(gray, blurred)
         noise_score = np.mean(diff)
         max_diff = np.max(diff)
 
-        # ---------- ОТЛАДКА ----------
+        # Вывод отладочной информации
         if debug:
             print(f"\n[DEBUG] mean={mean_val:.1f}, std={std_val:.1f}, var={variance:.1f}")
             print(f"[DEBUG] lap_var={lap_var:.1f}, edge_ratio={edge_ratio:.3f}")
             print(f"[DEBUG] noise_score={noise_score:.2f}, max_diff={max_diff:.1f}")
 
-        # -----------------------------
-        # 1. BLACKOUT
-        # -----------------------------
+        # Детектирование полного затемнения (blackout)
         if mean_val < 8 and std_val < 5:
             if debug: print("[RESULT] blackout")
             return "blackout"
 
-        # -----------------------------
-        # 2. SINGLE PIXEL
-        # -----------------------------
+        # Детектирование одного повреждённого пикселя
         if max_diff > 220 and noise_score < 5:
             if debug: print("[RESULT] single_pixel")
             return "single_pixel"
 
-        # -----------------------------
-        # 3. NOISE (снижаем пороги)
-        # -----------------------------
+        # Детектирование шумовой атаки
         if noise_score > 8 and variance > 500:
             if debug: print(f"[RESULT] noise (score={noise_score:.1f}, var={variance:.1f})")
             return "noise"
 
-        # -----------------------------
-        # 4. BLUR
-        # -----------------------------
+        # Детектирование размытия
         if lap_var < 50:
             if debug: print(f"[RESULT] blur (lap={lap_var:.1f})")
             return "blur"
 
-        # -----------------------------
-        # 5. BRIGHTNESS
-        # -----------------------------
+        # Детектирование низкой яркости
         if mean_val < 65:
             if debug: print(f"[RESULT] brightness (mean={mean_val:.1f})")
             return "brightness"
 
-        # -----------------------------
-        # 6. CONTRAST
-        # -----------------------------
+        # Детектирование низкого контраста
         if std_val < 40 and mean_val > 65:
             if debug: print(f"[RESULT] contrast (std={std_val:.1f})")
             return "contrast"
 
-        # ==================================================
-        # 7. ROTATION / PERSPECTIVE
-        # ==================================================
-        # Считаем линии только если не слишком шумно и есть границы
+        # Определение ротации и перспективы через линии
         if noise_score < 12 and edge_ratio > 0.03:
             
             lines = cv2.HoughLinesP(
