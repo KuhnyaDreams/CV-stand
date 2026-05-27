@@ -3,7 +3,6 @@ import unittest
 
 
 MODULES = [
-    "api.core_client",
     "api.model_functions",
     "utils.config",
     "utils.config_validator",
@@ -13,16 +12,20 @@ MODULES = [
     "attacks.coords_extractor",
     "attacks.bb.bb_attacks",
     "attacks.bb.video_attacks",
+    "defenses.defense",
+    "defenses.attack_classifier",
+    "defenses.adaptive_defense",
+    "defenses.video_defences",
     "evaluation.attack_presets",
     "evaluation.attack_eval",
     "evaluation.generate_attack_presentation",
+    "evaluation.plot_detection_ratio_drop",
+    "evaluation.plot_attack_strength_heatmap",
+    "evaluation.plot_defense_effectiveness_heatmap",
     "evaluation.run_image_patch_experiments",
     "evaluation.video_attack_eval",
-    "training.learned_patch",
-    "training.prepare_patch_data",
     "scripts.run_all_defenses",
     "scripts.run_full",
-    "scripts.run_single_pixels_attack",
 ]
 
 

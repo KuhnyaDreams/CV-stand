@@ -159,23 +159,6 @@ def segment(
     """
     return _call_core('segment', input_path, class_names, save_images, False)
 
-
-def classify(
-    input_path: str,
-    save_images: bool = True
-) -> Optional[Dict[str, Any]]:
-    """
-    Run image classification.
-    
-    Args:
-        input_path: Path to input image
-        save_images: Save result images
-        
-    Returns:
-        Classification results or None
-    """
-    return _call_core('classify', input_path, None, save_images, False)
-
 def classify(input_path, save_images = True):
     """Классификация изображения/папки."""
     return _call_core('classify', input_path, None, save_images)
