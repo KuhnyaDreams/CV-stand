@@ -122,17 +122,6 @@ python -c "from api.model_functions import estimate; import json; print(json.dum
 Где смотреть результат:
 - [results/estimation](/B:/CV-stand/results/estimation)
 
-### 5.2. Pose estimation на видео
-
-На текущем этапе в `wrapper` **нет отдельного поддерживаемого video pose estimation pipeline**.
-
-Сейчас через `wrapper` для видео поддерживается:
-- анализ наличия телефона через `analyze_video_phone(...)`;
-- атаки и защиты для video pipeline.
-
-Если в документации или презентации нужен честный статус, формулировка такая:
-- **pose estimation поддерживается для изображений; отдельный wrapper-пайплайн pose estimation для видео не реализован.**
-
 ## 6. Атаки
 
 ## 6.1. Одиночная image-атака с параметрами
@@ -271,14 +260,6 @@ python -c "import cv2; from defenses.attack_classifier import AttackClassifier; 
 - `frame_drop`
 - `blackout`
 - `patch`
-
-## 7.2. Классификация атак на видео
-
-Отдельного standalone CLI только для классификации video атак сейчас нет.
-
-На практике video attack classification используется внутри defense pipeline:
-- при защите уже атакованного видео;
-- при полном `attack -> defend -> evaluate` сценарии.
 
 ## 8. Защиты
 
