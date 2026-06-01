@@ -1,6 +1,7 @@
 """
-Utilities for path management and file operations.
-Centralizes all path discovery and temporary file handling logic.
+Утилиты для управления путями и операций с файлами.
+
+Централизует всю логику по поиску путей и управлению временными файлами.
 """
 
 import os
@@ -13,23 +14,30 @@ logger = logging.getLogger(__name__)
 
 
 class PathManager:
-    """Centralized path management for the wrapper module."""
+    """
+    Класс для централизованного управления путями модуля wrapper.
+    
+    Обеспечивает:
+    - поиск медиафайлов в различных местоположениях
+    - управление временными файлами
+    - гарантированное наличие необходимых директорий
+    """
     
     DATA_SUBDIRS = ["data", "../data", "../../data"]
     
     @staticmethod
     def find_image(filename: str) -> str:
         """
-        Find image path by searching multiple possible locations.
+        Находит путь к изображению, ища в нескольких возможных местоположениях.
         
         Args:
-            filename: Image filename to search for
-            
+            filename: Имя файла изображения
+        
         Returns:
-            Path to the image file
-            
+            str: Путь к файлу изображения
+        
         Raises:
-            FileNotFoundError: If image not found in any expected location
+            FileNotFoundError: Если изображение не найдено
         """
         possible_paths = [
             filename,
@@ -38,41 +46,41 @@ class PathManager:
         
         for path in possible_paths:
             if Path(path).exists():
-                logger.debug(f"Found image at: {path}")
+                logger.debug(f"Изображение найдено в: {path}")
                 return path
         
         raise FileNotFoundError(
-            f"Image '{filename}' not found in: {possible_paths}"
+            f"Изображение '{filename}' не найдено в: {possible_paths}"
         )
     
     @staticmethod
     def find_data_dir(create: bool = False) -> Path:
         """
-        Find or create the data directory.
+        Находит или создаёт директорию data.
         
         Args:
-            create: If True, create the directory if it doesn't exist
-            
+            create: Если True, создаёт директорию, если её нет
+        
         Returns:
-            Path object pointing to data directory
-            
+            Path: Объект Path, указывающий на директорию data
+        
         Raises:
-            FileNotFoundError: If directory not found and create=False
+            FileNotFoundError: Если директория не найдена и create=False
         """
         for subdir in PathManager.DATA_SUBDIRS:
             data_path = Path(subdir)
             if data_path.exists():
-                logger.debug(f"Found data directory at: {data_path}")
+                logger.debug(f"Директория data найдена в: {data_path}")
                 return data_path
         
         if create:
             data_path = Path("data")
             data_path.mkdir(parents=True, exist_ok=True)
-            logger.debug(f"Created data directory at: {data_path}")
+            logger.debug(f"Директория data создана в: {data_path}")
             return data_path
         
         raise FileNotFoundError(
-            f"Data directory not found in: {PathManager.DATA_SUBDIRS}"
+            f"Директория data не найдена в: {PathManager.DATA_SUBDIRS}"
         )
     
     @staticmethod
