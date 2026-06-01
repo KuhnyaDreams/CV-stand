@@ -31,7 +31,7 @@ def _call_core(
     
     Args:
         task: Тип задачи ('detect', 'segment', 'classify', 'estimate')
-        input_path: Путь к входному изображению
+        input_path: Путь к входному изображению или видео
         class_names: Опциональный фильтр по названиям классов
         save_images: Сохранить ли результирующие изображения
         show_boxes: Показать ли ограничивающие боксы
@@ -112,10 +112,10 @@ def detect(
     show_boxes: bool = True
 ) -> Optional[Dict[str, Any]]:
     """
-    Run object detection on image.
+    Run object detection on image, video.
     
     Args:
-        input_path: Path to input image
+        input_path: Path to input image, video
         class_names: Optional class filter
         save_images: Save result images
         show_boxes: Show bounding boxes
@@ -131,10 +131,10 @@ def estimate(
     save_images: bool = True
 ) -> Optional[Dict[str, Any]]:
     """
-    Run pose estimation on image.
+    Run pose estimation on image, video.
     
     Args:
-        input_path: Path to input image
+        input_path: Path to input image, video
         save_images: Save result images
         
     Returns:
@@ -149,10 +149,10 @@ def segment(
     save_images: bool = True
 ) -> Optional[Dict[str, Any]]:
     """
-    Run segmentation on image.
+    Run segmentation on image, video.
     
     Args:
-        input_path: Path to input image
+        input_path: Path to input image, video
         class_names: Optional class filter
         save_images: Save result images
         
@@ -162,10 +162,35 @@ def segment(
     return _call_core('segment', input_path, class_names, save_images, False)
 
 def classify(input_path, save_images = True):
-    """Классификация изображения/папки."""
+    """
+    Классификация изображения или всех изображений в папке, видео.
+    
+    Args:
+        input_path: Путь к входному изображению или папке с изображениями, видео
+        save_images: Сохранять ли результирующие изображения (по умолчанию True)
+        
+    Returns:
+        dict: Результат классификации или None при ошибке
+    """
     return _call_core('classify', input_path, None, save_images)
 
 def analyze_video_phone(video_path: str, frame_interval: int = 3, conf_thres: float = 0.25, iou_threshold: float = 0.2):
+    """
+    Анализ видео для поиска людей, использующих телефон.
+
+    Функция обрабатывает видео кадр за кадром с заданным интервалом,
+    выполняет детекцию объектов (человек + телефон) и определяет,
+    когда человек держит или использует телефон.
+    
+    Args:
+        video_path: Путь к видеофайлу
+        frame_interval: Интервал обработки кадров (каждый N-й кадр)
+        conf_thres: Порог уверенности для детекции
+        iou_threshold: Порог IoU для подавления дублирующихся боксов
+        
+    Returns:
+        dict: Результат анализа видео в виде json или None при ошибке
+    """
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     path = Path(video_path)
     name = path.stem

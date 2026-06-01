@@ -1,3 +1,32 @@
+"""
+================================================================================
+Назначение:
+    Данный скрипт демонстрирует полный цикл работы с атаками на модель CV-стенда:
+    1. Применение выбранной атаки к изображению
+    2. Классификация типа атаки
+    3. Применение адаптивной защиты
+    4. Запуск детекции YOLO на защищённом изображении
+    5. Вывод отчёта с результатами
+
+Использование:
+    python script.py <путь_к_изображению> --attack <тип_атаки>
+
+Пример:
+    python script.py test_image.jpg --attack perspective
+
+Аргументы:
+    image       - путь к входному изображению
+    --attack    - тип атаки (по умолчанию: perspective)
+                  Доступные варианты: patch, single_pixel, noise, blur,
+                  brightness, contrast, rotation, perspective, blackout
+
+Выходные данные:
+    - Сохраняет атакованное изображение в временную папку
+    - Сохраняет защищённое изображение в временную папку
+    - Возвращает JSON-отчёт с результатами детекции
+================================================================================
+"""
+
 from api.model_functions import detect
 from attacks.bb.bb_attacks import BlackBoxAttacks
 from defenses.adaptive_defense import AdaptiveDefense
@@ -28,10 +57,19 @@ ATTACK_MAP = {
 
 
 def run_attack_and_defense(image_path: str, attack_name: str = "patch"):
+    """
+    Выполняет полный цикл: атака -> защита -> детекция
+
+    Параметры:
+        image_path (str): Путь к исходному изображению
+        attack_name (str): Название атаки из ключей ATTACK_MAP
+
+    Возвращает:
+        dict: Отчёт с результатами детекции
+    """
     print("=" * 60)
     print("ADVERSARIAL DEFENSE TEST")
     print("=" * 60)
-
 
     image = cv2.imread(image_path)
 
@@ -50,9 +88,7 @@ def run_attack_and_defense(image_path: str, attack_name: str = "patch"):
 
     print(f"[2] Applied attack: {attack_name}")
 
-
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-
     attacked_filename = f"attacked_{timestamp}.png"
     attacked_path = PathManager.get_temp_image_path(attacked_filename)
 
@@ -62,7 +98,6 @@ def run_attack_and_defense(image_path: str, attack_name: str = "patch"):
 
     print(f"[3] Detected attack type: {detected_attack}")
 
-
     defended_image = defender.apply_with_type(
         attacked_image,
         detected_attack
@@ -70,12 +105,10 @@ def run_attack_and_defense(image_path: str, attack_name: str = "patch"):
 
     print(f"[4] Applied defense for: {detected_attack}")
 
-
     defended_filename = f"defended_{timestamp}.png"
     defended_path = PathManager.get_temp_image_path(defended_filename)
 
     cv2.imwrite(defended_path, defended_image)
-
 
     print("[5] Running YOLO detection...")
 
@@ -85,7 +118,6 @@ def run_attack_and_defense(image_path: str, attack_name: str = "patch"):
     print("=" * 60)
 
     return report
-
 
 
 def main() -> None:

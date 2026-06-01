@@ -27,23 +27,16 @@ def select_image_interactive() -> str:
     images = find_available_images()
     
     if not images:
-        print("\n❌ No images found in data/ directories!")
-        print("Please add images to the data/ folder")
+        print("\nNo images found in data/ directories")
         sys.exit(1)
-    
-    print("\n" + "="*70)
-    print("📸 Available Images:")
-    print("="*70)
     
     for idx, img_path in enumerate(images, 1):
         size_kb = img_path.stat().st_size / 1024
         print(f"  {idx}. {img_path.name:30} ({size_kb:.1f} KB)")
     
-    print("="*70)
-    
     while True:
         try:
-            choice = input(f"\n🎯 Select image (1-{len(images)}): ").strip()
+            choice = input(f"\n Select image (1-{len(images)}): ").strip()
             choice_num = int(choice)
             
             if 1 <= choice_num <= len(images):
@@ -51,11 +44,11 @@ def select_image_interactive() -> str:
                 print(f"✓ Selected: {selected}")
                 return str(selected)
             else:
-                print(f"❌ Please enter a number between 1 and {len(images)}")
+                print(f"Please enter a number between 1 and {len(images)}")
         except ValueError:
-            print("❌ Please enter a valid number")
+            print("Please enter a valid number")
         except KeyboardInterrupt:
-            print("\n\n⚠️  Cancelled by user")
+            print("\n\nCancelled by user")
             sys.exit(0)
 
 
@@ -84,9 +77,6 @@ def print_report(report: dict):
     print(f" Timestamp: {report.get('timestamp')}")
     
     # Display baseline/initial image detection results
-    print(f"\n" + "="*70)
-    print(" BASELINE IMAGE DETECTION (Initial Results):")
-    print("="*70)
     print(f" Detected Objects: {baseline} object(s)")
     
     # Show detailed baseline detections
@@ -99,30 +89,26 @@ def print_report(report: dict):
                 for i, obj in enumerate(objects, 1):
                     class_name = obj.get('class_name', 'Unknown')
                     confidence = obj.get('confidence', 0)
-                    print(f"   {i}. {class_name} (confidence: {confidence:.2%})")
+                    print(f"{i}. {class_name} (confidence: {confidence:.2%})")
             else:
-                print("   No objects detected")
+                print("No objects detected")
         else:
-            print("   No detection data available")
+            print("No detection data available")
     
-    print("="*70)
     print(f"\n White-Box Attacks: {summary.get('white_box_success_rate', 'N/A')}")
-    print(f"⬛ Black-Box Attacks: {summary.get('black_box_success_rate', 'N/A')}")
+    print(f"Black-Box Attacks: {summary.get('black_box_success_rate', 'N/A')}")
     
     print(f"\n Total Attacks: {summary.get('total_attacks', '?')}")
     print(f" Successful Attacks: {summary.get('successful_attacks', '?')}")
     
     success_rate = (summary.get('successful_attacks', 0) / summary.get('total_attacks', 1)) * 100
     print(f" Success Rate: {success_rate:.1f}%")
-    print(f" Note: Attack is successful if detection count DIFFERS from baseline ({baseline})")
-    print(f"         This includes both increases and decreases")
     
     print("\n" + "-"*70)
     print(" Detailed Results:")
-    print("-"*70)
     
     # White-box results
-    print("\n🤍 White-Box Attacks Results:")
+    print("\nWhite-Box Attacks Results:")
     for attack_name, result in report.get('white_box_attacks', {}).items():
         if isinstance(result, dict) and 'detections' in result:
             baseline_count = report.get('baseline_detections', 0)
@@ -132,10 +118,10 @@ def print_report(report: dict):
             comparison = f"({baseline_count}→{detections}, Δ{diff:+d})"
             print(f"  • {attack_name:12} → {detections} detections {comparison} {status}")
         elif isinstance(result, dict) and 'error' in result:
-            print(f"  • {attack_name:12} → ⚠️  ERROR: {result['error']}")
+            print(f"  • {attack_name:12} → ERROR: {result['error']}")
     
     # Black-box results
-    print("\n⬛ Black-Box Attacks Results:")
+    print("\nBlack-Box Attacks Results:")
     for attack_name, result in report.get('black_box_attacks', {}).items():
         if isinstance(result, dict) and 'detections' in result:
             baseline_count = report.get('baseline_detections', 0)
@@ -145,7 +131,7 @@ def print_report(report: dict):
             comparison = f"({baseline_count}→{detections}, Δ{diff:+d})"
             print(f"  • {attack_name:18} → {detections} detections {comparison} {status}")
         elif isinstance(result, dict) and 'error' in result:
-            print(f"  • {attack_name:18} → ⚠️  ERROR: {result['error']}")
+            print(f"  • {attack_name:18} → ERROR: {result['error']}")
     
     print("\n" + "-"*70)
 
@@ -196,7 +182,7 @@ Examples:
         image_path = select_image_interactive()
     
     if not Path(image_path).exists():
-        print(f"\n❌ Error: Image not found: {image_path}")
+        print(f"\nError: Image not found: {image_path}")
         print("\nTrying to find images in data/ folders...")
         found = False
         for data_dir_path in [Path("data"), Path("../data"), Path("../../data")]:
@@ -208,13 +194,13 @@ Examples:
                     found = True
                     break
         if not found:
-            print("\n❌ No images found!")
+            print("\nNo images found!")
             print("Please provide an image path or place images in data/ folder")
             sys.exit(1)
     
     print_header()
-    print(f"\n📷 Image: {image_path}")
-    print(f"📁 Output: {args.output}\n")
+    print(f"\nImage: {image_path}")
+    print(f"Output: {args.output}\n")
     
     try:
         evaluator = AttackEvaluator(output_dir=args.output)
@@ -224,12 +210,12 @@ Examples:
         if args.save_report:
             with open(args.save_report, 'w') as f:
                 json.dump(report, f, indent=2, default=str)
-            print(f"\n💾 Report saved to: {args.save_report}")
+            print(f"\nReport saved to: {args.save_report}")
         print_footer()
         return 0
     except Exception as e:
-        print(f"\n❌ Error occurred:")
-        print(f"   {str(e)}")
+        print(f"\nError occurred:")
+        print(f"{str(e)}")
         import traceback
         traceback.print_exc()
         return 1

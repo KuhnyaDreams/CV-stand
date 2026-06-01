@@ -49,7 +49,7 @@ def extract_attack_coordinates(
     
     for img_data in detection_result.get("images", []):
         for obj in img_data.get("objects", []):
-            # 🔍 Фильтрация по классу
+            #Фильтрация по классу
             if target_classes is not None:
                 obj_class = obj.get("class", "")
                 compare_class = obj_class if case_sensitive else obj_class.lower()
@@ -57,13 +57,13 @@ def extract_attack_coordinates(
                           for tc in target_classes):
                     continue
             
-            # 📦 Обработка bbox
+            #Обработка bbox
             x1, y1, x2, y2 = obj["bbox"]
             x_min, x_max = sorted([int(round(x1)), int(round(x2))])
             y_min, y_max = sorted([int(round(y1)), int(round(y2))])
             bbox_w, bbox_h = x_max - x_min, y_max - y_min
             
-            # 📐 Вычисление размера патча
+            #Вычисление размера патча
             if patch_size_mode == "fixed":
                 patch_size = int(patch_size_value)
             elif patch_size_mode == "ratio":
@@ -77,7 +77,7 @@ def extract_attack_coordinates(
             
             patch_size = max(1, patch_size)  # защита от 0
             
-            # 🎯 Генерация координат по стратегии
+            #Генерация координат по стратегии
             candidate_points = []
             if strategy == "center":
                 candidate_points = [((x_min + x_max) // 2, (y_min + y_max) // 2)]
@@ -98,7 +98,7 @@ def extract_attack_coordinates(
                     for y in range(y_min, y_max + 1, step_y):
                         candidate_points.append((x, y))
             
-            # 📦 Формирование результата
+            # Формирование результата
             for (px, py) in candidate_points:
                 if return_patch_info:
                     results.append({

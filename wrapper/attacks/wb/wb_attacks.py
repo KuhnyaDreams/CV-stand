@@ -138,7 +138,7 @@ class WhiteBoxAttacks(AttackBase):
         # Load original in full resolution
         original_full = WhiteBoxAttacks.load_original_image(image_path)[0].to(device)
         h, w = original_full.shape[2], original_full.shape[3]
-        logger.info(f"📷 Размер изображения: {w}x{h}")
+        logger.info(f"Размер изображения: {w}x{h}")
         
         # Resize for model
         original_224 = F.interpolate(original_full, size=(224, 224), mode='bilinear', align_corners=False)
@@ -147,7 +147,7 @@ class WhiteBoxAttacks(AttackBase):
         with torch.no_grad():
             init_output = model(original_224)
             init_prob = F.softmax(init_output, dim=1)[0, avoid_class].item()
-        logger.info(f"📉 Исходная вероятность класса {avoid_class}: {init_prob:.4f}")
+        logger.info(f"Исходная вероятность класса {avoid_class}: {init_prob:.4f}")
         
         for i in range(max_iter):
             if adv_224.grad is not None:
@@ -163,7 +163,7 @@ class WhiteBoxAttacks(AttackBase):
             if i % 3 == 0:
                 with torch.no_grad():
                     current_prob = F.softmax(model(adv_224), dim=1)[0, avoid_class].item()
-                logger.info(f"   Итерация {i+1}: вероятность = {current_prob:.4f}")
+                logger.info(f"Итерация {i+1}: вероятность = {current_prob:.4f}")
         
         # Scale perturbation back to original resolution
         delta_224 = adv_224 - original_224
@@ -171,7 +171,7 @@ class WhiteBoxAttacks(AttackBase):
         adv_full = original_full + delta_full.detach()
         adv_full = torch.clamp(adv_full, -125.0/255.0, 155.0/255.0)
         
-        logger.info(f"✅ FGSM завершена. Размер: {w}x{h}")
+        logger.info(f"FGSM завершена. Размер: {w}x{h}")
         return adv_full
     
     # ==================== PGD ATTACK ====================
@@ -203,7 +203,7 @@ class WhiteBoxAttacks(AttackBase):
         
         original_full = WhiteBoxAttacks.load_original_image(image_path)[0].to(device)
         h, w = original_full.shape[2], original_full.shape[3]
-        logger.info(f"📷 Размер изображения: {w}x{h}")
+        logger.info(f"Размер изображения: {w}x{h}")
         
         original_224 = F.interpolate(original_full, size=(224, 224), mode='bilinear', align_corners=False)
         adv_224 = original_224.clone().detach().requires_grad_(True)
@@ -212,7 +212,7 @@ class WhiteBoxAttacks(AttackBase):
         with torch.no_grad():
             init_output = model(original_224)
             init_prob = F.softmax(init_output, dim=1)[0, avoid_class].item()
-        logger.info(f"📉 Исходная вероятность класса {avoid_class}: {init_prob:.4f}")
+        logger.info(f"Исходная вероятность класса {avoid_class}: {init_prob:.4f}")
         
         for i in range(max_iter):
             optimizer.zero_grad()
@@ -226,14 +226,14 @@ class WhiteBoxAttacks(AttackBase):
             if i % 3 == 0:
                 with torch.no_grad():
                     current_prob = F.softmax(model(adv_224), dim=1)[0, avoid_class].item()
-                logger.info(f"   Итерация {i+1}: вероятность = {current_prob:.4f}")
+                logger.info(f"Итерация {i+1}: вероятность = {current_prob:.4f}")
         
         delta_224 = adv_224 - original_224
         delta_full = F.interpolate(delta_224, size=(h, w), mode='bilinear', align_corners=False)
         adv_full = original_full + delta_full.detach()
         adv_full = torch.clamp(adv_full, -125.0/255.0, 155.0/255.0)
         
-        logger.info(f"✅ PGD завершена. Размер: {w}x{h}")
+        logger.info(f"PGD завершена. Размер: {w}x{h}")
         return adv_full
     
     # ==================== JSMA ATTACK ====================
@@ -267,14 +267,14 @@ class WhiteBoxAttacks(AttackBase):
         
         original_full = WhiteBoxAttacks.load_original_image(image_path)[0].to(device)
         h, w = original_full.shape[2], original_full.shape[3]
-        logger.info(f"📷 Размер изображения: {w}x{h}")
+        logger.info(f"Размер изображения: {w}x{h}")
         
         original_224 = F.interpolate(original_full, size=(224, 224), mode='bilinear', align_corners=False)
         
         with torch.no_grad():
             init_output = model(original_224)
             init_prob = F.softmax(init_output, dim=1)[0, avoid_class].item()
-        logger.info(f"📉 Исходная вероятность класса {avoid_class}: {init_prob:.4f}")
+        logger.info(f"Исходная вероятность класса {avoid_class}: {init_prob:.4f}")
         
         adv_224 = original_224.clone()
         modified_mask = torch.zeros_like(adv_224)
@@ -285,7 +285,7 @@ class WhiteBoxAttacks(AttackBase):
             current_prob = F.softmax(output, dim=1)[0, avoid_class]
             
             if output.argmax(dim=1).item() != avoid_class:
-                logger.info(f"🎯 Атака успешна на итерации {iteration}")
+                logger.info(f"Атака успешна на итерации {iteration}")
                 break
             
             current_prob.backward()
@@ -312,7 +312,7 @@ class WhiteBoxAttacks(AttackBase):
                         modified_mask.view(-1)[idx] = 1
             
             if modified_mask.sum() >= int(theta * adv_224.numel()):
-                logger.info("⚠️ Достигнут лимит L0")
+                logger.info("Достигнут лимит L0")
                 break
             
             if iteration % 10 == 0:
@@ -325,7 +325,7 @@ class WhiteBoxAttacks(AttackBase):
         for c in range(3):
             adv_full[:, c, :, :] = torch.clamp(adv_full[:, c, :, :], NORM_MIN[c], NORM_MAX[c])
         
-        logger.info(f"✅ JSMA завершена. Размер: {w}x{h}")
+        logger.info(f"JSMA завершена. Размер: {w}x{h}")
         return adv_full.detach()
     
     # ==================== DEEPFOOL ATTACK ====================
@@ -359,14 +359,14 @@ class WhiteBoxAttacks(AttackBase):
         
         original_full = WhiteBoxAttacks.load_original_image(image_path)[0].to(device)
         h, w = original_full.shape[2], original_full.shape[3]
-        logger.info(f"📷 Размер изображения: {w}x{h}")
+        logger.info(f"Размер изображения: {w}x{h}")
         
         image_224 = F.interpolate(original_full, size=(224, 224), mode='bilinear', align_corners=False)
         
         with torch.no_grad():
             init_output = model(image_224)
             init_prob = F.softmax(init_output, dim=1)[0, avoid_class].item()
-        logger.info(f"📉 Исходная вероятность класса {avoid_class}: {init_prob:.4f}")
+        logger.info(f"Исходная вероятность класса {avoid_class}: {init_prob:.4f}")
         
         input_shape = image_224.shape
         r_tot = np.zeros(input_shape)
@@ -379,7 +379,7 @@ class WhiteBoxAttacks(AttackBase):
             current_class = torch.argmax(output).item()
             
             if current_class != avoid_class:
-                logger.info(f"🎯 DeepFool успешна на итерации {loop_i}")
+                logger.info(f"DeepFool успешна на итерации {loop_i}")
                 break
             
             probs = F.softmax(output, dim=1)
@@ -431,7 +431,7 @@ class WhiteBoxAttacks(AttackBase):
         adv_full = original_full + delta_full
         adv_full = torch.clamp(adv_full, -3, 3)
         
-        logger.info(f"✅ DeepFool завершена. Размер: {w}x{h}")
+        logger.info(f"DeepFool завершена. Размер: {w}x{h}")
         return adv_full
     
     # ==================== LEGACY METHODS (для совместимости) ====================

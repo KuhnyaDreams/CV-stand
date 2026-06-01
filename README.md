@@ -74,9 +74,26 @@ pip install -r .\wrapper\requirements.txt
 - `..\data\man_with_phone.jpg`
 - `..\data\video3.mp4`
 
-## 4. Простая детекция
+## 4. Полный video pipeline: атака -> защита -> оценка
 
-### 4.1. Детекция на изображении
+Пример:
+
+```powershell
+cd B:\CV-stand\wrapper
+python -m evaluation.video_attack_eval --video ..\data\video3.mp4 --attack low_light_attack --brightness-factor 0.3 --noise-level 0.14 --defend --frame-interval 3 --frame-skip 2
+```
+
+Что делает:
+- анализирует исходное видео;
+- создает attacked video;
+- классифицирует атаку по кадрам;
+- применяет защиту;
+- анализирует defended video;
+- считает метрики восстановления.
+
+## 5. Простая детекция
+
+### 5.1. Детекция на изображении
 
 Из [wrapper](/B:/CV-stand/wrapper):
 
@@ -92,7 +109,7 @@ python -c "from api.model_functions import detect; import json; print(json.dumps
 Где смотреть результат:
 - [results/detection](/B:/CV-stand/results/detection)
 
-### 4.2. Анализ видео на наличие телефона
+### 5.2. Анализ видео на наличие телефона
 
 Из [wrapper](/B:/CV-stand/wrapper):
 
@@ -108,9 +125,9 @@ python -c "from api.model_functions import analyze_video_phone; import json; pri
 Где смотреть результат:
 - [results/video_analysis](/B:/CV-stand/results/video_analysis)
 
-## 5. Pose estimation
+## 6. Pose estimation
 
-### 5.1. Pose estimation на изображении
+### 6.1. Pose estimation на изображении
 
 Из [wrapper](/B:/CV-stand/wrapper):
 
@@ -122,9 +139,9 @@ python -c "from api.model_functions import estimate; import json; print(json.dum
 Где смотреть результат:
 - [results/estimation](/B:/CV-stand/results/estimation)
 
-## 6. Атаки
+## 7. Атаки
 
-## 6.1. Одиночная image-атака с параметрами
+## 7.1. Одиночная image-атака с параметрами
 
 Самый удобный способ — через `AttackEvaluator.run_single_attack(...)`.
 
@@ -153,7 +170,7 @@ python -c "from evaluation.attack_eval import AttackEvaluator; import json; ev =
 - `perspective_transform_attack`
 - `blackout_attack`
 
-## 6.2. Полный image benchmark
+## 7.2. Полный image benchmark
 
 Из [wrapper](/B:/CV-stand/wrapper):
 
@@ -164,7 +181,7 @@ python -m scripts.run_full ..\data\man_with_phone.jpg
 
 Этот режим прогоняет набор атак и формирует общий отчет.
 
-## 6.3. Video BB атака через CLI
+## 7.3. Video BB атака через CLI
 
 Основной entrypoint:
 - [wrapper/evaluation/video_attack_eval.py](/B:/CV-stand/wrapper/evaluation/video_attack_eval.py)
@@ -203,7 +220,7 @@ python -m evaluation.video_attack_eval --video ..\data\video3.mp4 --attack patch
 - `blackout_attack`
 - `patch_attack`
 
-## 6.4. Параметры video-атак
+## 7.4. Параметры video-атак
 
 Основные CLI-флаги:
 - `--kernel-size` — для `gaussian_blur_attack`
@@ -222,7 +239,7 @@ python -m evaluation.video_attack_eval --video ..\data\video3.mp4 --attack patch
 - `--flicker-period`
 - `--flicker-active-ratio`
 
-## 6.5. Video experiments через JSON-конфиг
+## 7.5. Video experiments через JSON-конфиг
 
 Пример:
 
@@ -234,9 +251,9 @@ python -m evaluation.video_attack_eval --video ..\data\video3.mp4 --experiment-c
 Типовые конфиги лежат в:
 - [data/Configs](/B:/CV-stand/data/Configs)
 
-## 7. Классификация атак
+## 8. Классификация атак
 
-## 7.1. Классификация атаки на изображении
+## 8.1. Классификация атаки на изображении
 
 Пример прямого вызова эвристического classifier:
 
@@ -261,9 +278,9 @@ python -c "import cv2; from defenses.attack_classifier import AttackClassifier; 
 - `blackout`
 - `patch`
 
-## 8. Защиты
+## 9. Защиты
 
-## 8.1. Защита на изображении
+## 9.1. Защита на изображении
 
 Image pipeline:
 - применить атаку;
@@ -293,24 +310,7 @@ python -m scripts.run_all_defenses ..\data\man_with_phone.jpg --attack noise
 - временные attacked/defended изображения появляются в [data](/B:/CV-stand/data)
 - detect-результат сохраняется в [results/detection](/B:/CV-stand/results/detection)
 
-## 8.2. Полный video pipeline: атака -> защита -> оценка
-
-Пример:
-
-```powershell
-cd B:\CV-stand\wrapper
-python -m evaluation.video_attack_eval --video ..\data\video3.mp4 --attack low_light_attack --brightness-factor 0.3 --noise-level 0.14 --defend --frame-interval 3 --frame-skip 2
-```
-
-Что делает:
-- анализирует исходное видео;
-- создает attacked video;
-- классифицирует атаку по кадрам;
-- применяет защиту;
-- анализирует defended video;
-- считает метрики восстановления.
-
-## 8.3. Защита уже атакованного видео
+## 9.2. Защита уже атакованного видео
 
 Если attacked video уже готово:
 
@@ -330,7 +330,7 @@ python -m evaluation.video_attack_eval --video ..\data\attack_low_light_medium_2
 - defended video — обычно в [data](/B:/CV-stand/data)
 - JSON-отчет по защите — в [results/video_defense_reports](/B:/CV-stand/results/video_defense_reports)
 
-## 8.4. Низкоуровневый video defense helper
+## 9.3. Низкоуровневый video defense helper
 
 Если нужно запустить только защиту без evaluator:
 
@@ -342,7 +342,7 @@ python -c "from defenses.video_defences import defend_attacked_video; import jso
 Файл:
 - [wrapper/defenses/video_defences.py](/B:/CV-stand/wrapper/defenses/video_defences.py)
 
-## 9. Patch experiments
+## 10. Patch experiments
 
 Для image patch sweep используется отдельный runner:
 - [wrapper/evaluation/run_image_patch_experiments.py](/B:/CV-stand/wrapper/evaluation/run_image_patch_experiments.py)
@@ -357,7 +357,7 @@ python -m evaluation.run_image_patch_experiments --config ..\data\Configs\image_
 Где смотреть результат:
 - [results/image_patch_reports](/B:/CV-stand/results/image_patch_reports)
 
-## 10. Визуализация результатов
+## 11. Визуализация результатов
 
 Доступны отдельные скрипты:
 - [wrapper/evaluation/generate_attack_presentation.py](/B:/CV-stand/wrapper/evaluation/generate_attack_presentation.py)
@@ -365,7 +365,7 @@ python -m evaluation.run_image_patch_experiments --config ..\data\Configs\image_
 - [wrapper/evaluation/plot_attack_strength_heatmap.py](/B:/CV-stand/wrapper/evaluation/plot_attack_strength_heatmap.py)
 - [wrapper/evaluation/plot_defense_effectiveness_heatmap.py](/B:/CV-stand/wrapper/evaluation/plot_defense_effectiveness_heatmap.py)
 
-## 11. Быстрый чек-лист
+## 12. Быстрый чек-лист
 
 1. Положить входные изображения и видео в [data](/B:/CV-stand/data)
 2. Запустить `core`:
@@ -383,7 +383,7 @@ docker-compose up -d
 9. Для image defense использовать `python -m scripts.run_all_defenses ...`
 10. Для video defense использовать `--defend` или `--defend-attacked-video`
 
-## 12. Проверка текущего состояния
+## 13. Проверка текущего состояния
 
 На текущем состоянии проекта smoke-тесты проходят:
 

@@ -8,6 +8,9 @@ from evaluation.attack_presets import get_attack_preset_params, load_attack_pres
 from utils.io_utils import ensure_dir, make_data_temp_path, make_temp_filename
 from api.model_functions import analyze_video_phone
 from attacks.bb.video_attacks import VideoBlackBoxAttacks
+from defenses.adaptive_defense import AdaptiveDefense
+from defenses.attack_classifier import AttackClassifier
+from utils.io_utils import read_video_frames, write_video
 
 
 class VideoAttackEvaluator:
@@ -355,9 +358,6 @@ class VideoAttackEvaluator:
         Returns:
             dict: comprehensive report with all metrics
         """
-        from defenses.adaptive_defense import AdaptiveDefense
-        from defenses.attack_classifier import AttackClassifier
-        from utils.io_utils import read_video_frames, write_video
         
         attack_method = getattr(self.video_attacks, attack_name, None)
         if attack_method is None:
@@ -582,9 +582,6 @@ class VideoAttackEvaluator:
         attacked video -> classify frames -> apply defense -> compare attacked
         and defended metrics.
         """
-        from defenses.adaptive_defense import AdaptiveDefense
-        from defenses.attack_classifier import AttackClassifier
-        from utils.io_utils import read_video_frames, write_video
 
         attacked_video_path = Path(local_attacked_video_path)
         if not attacked_video_path.exists():
