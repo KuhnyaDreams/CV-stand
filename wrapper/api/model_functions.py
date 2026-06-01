@@ -1,0 +1,210 @@
+"""
+API-обёртка для сервисов компьютерного зрения.
+
+Предоставляет единый интерфейс к операциям обнаружения, сегментации,
+классификации и оценки задач.
+"""
+
+import time
+import requests
+from pathlib import Path
+import os
+from typing import Optional, Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Конфигурация API
+CORE_URL = os.getenv("CORE_URL", "http://localhost:8000")
+REQUEST_TIMEOUT = 30  # секунды
+
+
+def _call_core(
+    task: str,
+    input_path: str,
+    class_names: Optional[str] = None,
+    save_images: bool = True,
+    show_boxes: bool = False
+) -> Optional[Dict[str, Any]]:
+    """
+    Универсальный API-вызов к core-сервису.
+    
+    Args:
+        task: Тип задачи ('detect', 'segment', 'classify', 'estimate')
+        input_path: Путь к входному изображению или видео
+        class_names: Опциональный фильтр по названиям классов
+        save_images: Сохранить ли результирующие изображения
+        show_boxes: Показать ли ограничивающие боксы
+    
+    Returns:
+        dict: Ответ API или None при ошибке
+    
+    Raises:
+        ValueError: Если тип задачи неизвестен
+    """
+    # Проверяем тип задачи
+    valid_tasks = {'detect', 'estimate', 'segment', 'classify'}
+    if task not in valid_tasks:
+        raise ValueError(f"Неизвестный тип задачи: {task}. Должен быть один из: {valid_tasks}")
+    
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    path = Path(input_path)
+    name = path.stem
+    
+    # Маппинг задачи к поддиректории результатов
+    output_subdir = {
+        'detect': 'detection',
+        'estimate': 'estimation',
+        'segment': 'segmentation',
+        'classify': 'classification',
+    }.get(task, 'unknown')
+    
+    # Формируем параметры запроса
+    params = {
+        "input_path": f"/data/{input_path}",
+        "output_path": f"/results/{output_subdir}/{timestamp}-{name}",
+        "task": task,
+        "save_images": save_images,
+        "show_boxes": show_boxes,
+    }
+    
+    # Добавляем названия классов только для detect и segment
+    if task in ['detect', 'segment']:
+        params["class_names"] = class_names
+    
+    logger.info(f"Вызов {task} API: {CORE_URL}/{task}")
+    
+    try:
+        response = requests.post(
+            f"{CORE_URL}/{task}",
+            json=params,
+            timeout=REQUEST_TIMEOUT
+        )
+        
+        if response.status_code == 200:
+            logger.info(f"✓ {task} completed successfully")
+            return response.json()
+        else:
+            logger.error(
+                f"✗ API error for {task}: "
+                f"status {response.status_code}, "
+                f"body: {response.text}"
+            )
+            return None
+    
+    except requests.Timeout:
+        logger.error(f"✗ Request timeout for {task} (>{REQUEST_TIMEOUT}s)")
+        return None
+    
+    except requests.ConnectionError:
+        logger.error(f"✗ Connection error: Cannot reach {CORE_URL}")
+        return None
+    
+    except Exception as e:
+        logger.error(f"✗ Unexpected error in {task}: {e}")
+        return None
+
+
+def detect(
+    input_path: str,
+    class_names: Optional[str] = None,
+    save_images: bool = True,
+    show_boxes: bool = True
+) -> Optional[Dict[str, Any]]:
+    """
+    Run object detection on image, video.
+    
+    Args:
+        input_path: Path to input image, video
+        class_names: Optional class filter
+        save_images: Save result images
+        show_boxes: Show bounding boxes
+        
+    Returns:
+        Detection results or None
+    """
+    return _call_core('detect', input_path, class_names, save_images, show_boxes)
+
+
+def estimate(
+    input_path: str,
+    save_images: bool = True
+) -> Optional[Dict[str, Any]]:
+    """
+    Run pose estimation on image, video.
+    
+    Args:
+        input_path: Path to input image, video
+        save_images: Save result images
+        
+    Returns:
+        Estimation results or None
+    """
+    return _call_core('estimate', input_path, None, save_images, False)
+
+
+def segment(
+    input_path: str,
+    class_names: Optional[str] = None,
+    save_images: bool = True
+) -> Optional[Dict[str, Any]]:
+    """
+    Run segmentation on image, video.
+    
+    Args:
+        input_path: Path to input image, video
+        class_names: Optional class filter
+        save_images: Save result images
+        
+    Returns:
+        Segmentation results or None
+    """
+    return _call_core('segment', input_path, class_names, save_images, False)
+
+def classify(input_path, save_images = True):
+    """
+    Классификация изображения или всех изображений в папке, видео.
+    
+    Args:
+        input_path: Путь к входному изображению или папке с изображениями, видео
+        save_images: Сохранять ли результирующие изображения (по умолчанию True)
+        
+    Returns:
+        dict: Результат классификации или None при ошибке
+    """
+    return _call_core('classify', input_path, None, save_images)
+
+def analyze_video_phone(video_path: str, frame_interval: int = 3, conf_thres: float = 0.25, iou_threshold: float = 0.2):
+    """
+    Анализ видео для поиска людей, использующих телефон.
+
+    Функция обрабатывает видео кадр за кадром с заданным интервалом,
+    выполняет детекцию объектов (человек + телефон) и определяет,
+    когда человек держит или использует телефон.
+    
+    Args:
+        video_path: Путь к видеофайлу
+        frame_interval: Интервал обработки кадров (каждый N-й кадр)
+        conf_thres: Порог уверенности для детекции
+        iou_threshold: Порог IoU для подавления дублирующихся боксов
+        
+    Returns:
+        dict: Результат анализа видео в виде json или None при ошибке
+    """
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    path = Path(video_path)
+    name = path.stem
+    output_path = f"/results/video_analysis/{timestamp}-{name}"
+    params = {
+        "video_path": f"/data/{video_path}",
+        "output_path": output_path,
+        "frame_interval": frame_interval,
+        "conf_thres": conf_thres,
+        "iou_threshold": iou_threshold
+    }
+    response = requests.post(f"{CORE_URL}/analyze_video", json=params)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Ошибка анализа видео: {response.status_code}")
+        return None
