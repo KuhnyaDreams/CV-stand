@@ -7,7 +7,7 @@
 2. Сбилдить и запустить стенд:
 
 ```
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 3. Перейти в `wrapper/`
